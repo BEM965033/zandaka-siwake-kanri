@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AccountType {
+  CASH
+  LOCAL_BANK
+  NET_BANK
+  OTHER
+}
+
+enum TransactionType {
+  EXPENSE
+  INCOME
+  TRANSFER
+}
+
+enum CategoryType {
+  EXPENSE
+  INCOME
+}
+
+model Account {
+  id             String      @id @default(cuid())
+  name           String
+  type           AccountType
+  balance        Decimal     @default(0) @db.Decimal(15, 0)
+  initialBalance Decimal     @default(0) @db.Decimal(15, 0)
+  sortOrder      Int         @default(0)
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  transactionsFrom Transaction[] @relation("FromAccount")
+  transactionsTo   Transaction[] @relation("ToAccount")
+}
+
+model Category {
+  id            String       @id @default(cuid())
+  name          String
+  type          CategoryType
+  debitAccount  String?
+  creditAccount String?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  transactions Transaction[]
+}
+
+model Transaction {
+  id            String          @id @default(cuid())
+  date          DateTime
+  type          TransactionType
+  amount        Decimal         @db.Decimal(15, 0)
+  description   String
+  memo          String?
+  isClassified  Boolean         @default(true)
+
+  fromAccountId String?
+  toAccountId   String?
+  categoryId    String?
+
+  fromAccount Account?  @relation("FromAccount", fields: [fromAccountId], references: [id])
+  toAccount   Account?  @relation("ToAccount",   fields: [toAccountId],   references: [id])
+  category    Category? @relation(fields: [categoryId], references: [id])
+
+  journalEntries JournalEntry[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model JournalEntry {
+  id            String   @id @default(cuid())
+  transactionId String
+  lineNo        Int
+  accountName   String
+  debit         Decimal  @default(0) @db.Decimal(15, 0)
+  credit        Decimal  @default(0) @db.Decimal(15, 0)
+  description   String
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+}
