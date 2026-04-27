@@ -32,6 +32,14 @@ export interface TransactionWithRelations {
   category: { id: string; name: string } | null;
 }
 
+export interface ScannedItem {
+  date: string;
+  description: string;
+  amount: number;
+  type: "EXPENSE" | "INCOME";
+  categoryId?: string;
+}
+
 export interface DashboardData {
   totalBalance: number;
   accounts: AccountWithBalance[];

@@ -9,11 +9,13 @@ import {
   List,
   Building2,
   Tag,
+  ScanLine,
 } from "lucide-react";
 
 const navItems = [
   { href: "/", label: "ダッシュボード", icon: LayoutDashboard },
   { href: "/transactions/new", label: "取引入力", icon: PlusCircle },
+  { href: "/scan", label: "通帳スキャン", icon: ScanLine },
   { href: "/transactions", label: "履歴一覧", icon: List },
   { href: "/accounts", label: "口座設定", icon: Building2 },
   { href: "/categories", label: "カテゴリ設定", icon: Tag },
