@@ -19,7 +19,14 @@ export async function scanImage(formData: FormData) {
   const buffer = await file.arrayBuffer();
   const base64 = Buffer.from(buffer).toString("base64");
 
-  const items = await scanBankStatement(base64, file.type as AllowedMimeType);
+  let items: Awaited<ReturnType<typeof scanBankStatement>>;
+  try {
+    items = await scanBankStatement(base64, file.type as AllowedMimeType);
+  } catch (e) {
+    console.error("Gemini API error:", e);
+    return { error: "AI読み取りに失敗しました。画像を確認して再試行してください。" };
+  }
+
   if (items.length === 0) return { error: "取引データを読み取れませんでした" };
 
   return { items };
@@ -35,6 +42,7 @@ export async function bulkCreateTransactions(
   const account = await prisma.account.findUnique({ where: { id: accountId } });
   if (!account) return { error: "口座が見つかりません" };
 
+  try {
   for (const item of items) {
     const category = item.categoryId
       ? await prisma.category.findUnique({ where: { id: item.categoryId } })
@@ -68,6 +76,11 @@ export async function bulkCreateTransactions(
         ? prisma.account.update({ where: { id: accountId }, data: { balance: { decrement: item.amount } } })
         : prisma.account.update({ where: { id: accountId }, data: { balance: { increment: item.amount } } }),
     ]);
+  }
+
+  } catch (e) {
+    console.error("bulk create error:", e);
+    return { error: "登録中にエラーが発生しました" };
   }
 
   revalidatePath("/");
