@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { parseCsvFile, scanImage, bulkCreateTransactions } from "@/actions/scan";
+import { parseCsvFile, bulkCreateTransactions } from "@/actions/scan";
+import { parseOcrText } from "@/lib/ocr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +31,8 @@ export function ScanPage({ accounts, categories }: Props) {
   const [items, setItems] = useState<EditableItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [isProcessing, startProcess] = useTransition();
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [, startProcess] = useTransition();
   const [isRegistering, startRegister] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -52,21 +54,43 @@ export function ScanPage({ accounts, categories }: Props) {
     setSuccessMsg(null);
   }
 
-  function handleProcess() {
-    if (!formRef.current) return;
-    const formData = new FormData(formRef.current);
+  async function handleProcess() {
     setError(null);
     setSuccessMsg(null);
-    startProcess(async () => {
-      const result = mode === "csv"
-        ? await parseCsvFile(formData)
-        : await scanImage(formData);
-      if ("error" in result) {
-        setError(result.error ?? "エラーが発生しました");
-        return;
+
+    if (mode === "csv") {
+      if (!formRef.current) return;
+      const formData = new FormData(formRef.current);
+      setIsProcessing(true);
+      startProcess(async () => {
+        const result = await parseCsvFile(formData);
+        setIsProcessing(false);
+        if ("error" in result) { setError(result.error ?? "エラーが発生しました"); return; }
+        setItems(result.items.map((item, i) => ({ ...item, id: String(i), selected: true })));
+      });
+    } else {
+      const file = fileRef.current?.files?.[0];
+      if (!file) { setError("画像を選択してください"); return; }
+      setIsProcessing(true);
+      try {
+        const { createWorker } = await import("tesseract.js");
+        const worker = await createWorker("jpn", 1, {
+          workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/worker.min.js",
+          langPath: "https://tessdata.projectnaptha.com/4.0.0",
+          corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js",
+        });
+        const { data: { text } } = await worker.recognize(file);
+        await worker.terminate();
+        const parsed = parseOcrText(text);
+        if (parsed.length === 0) { setError("取引データを読み取れませんでした。画像を確認してください。"); }
+        else { setItems(parsed.map((item, i) => ({ ...item, id: String(i), selected: true }))); }
+      } catch (e) {
+        console.error(e);
+        setError("OCR処理に失敗しました");
+      } finally {
+        setIsProcessing(false);
       }
-      setItems(result.items.map((item, i) => ({ ...item, id: String(i), selected: true })));
-    });
+    }
   }
 
   function toggleSelect(id: string) {
