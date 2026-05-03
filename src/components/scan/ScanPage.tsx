@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { scanImage, bulkCreateTransactions } from "@/actions/scan";
+import { parseCsvFile, scanImage, bulkCreateTransactions } from "@/actions/scan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import type { AccountWithBalance, CategoryOption, ScannedItem } from "@/types";
-import { Upload, ScanLine, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, ScanLine, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 
 interface Props {
   accounts: AccountWithBalance[];
@@ -21,33 +21,46 @@ interface EditableItem extends ScannedItem {
   selected: boolean;
 }
 
+type Mode = "csv" | "image";
+
 export function ScanPage({ accounts, categories }: Props) {
+  const [mode, setMode] = useState<Mode>("csv");
   const [accountId, setAccountId] = useState("");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [items, setItems] = useState<EditableItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [isScanning, startScan] = useTransition();
+  const [isProcessing, startProcess] = useTransition();
   const [isRegistering, startRegister] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
+  function resetState() {
+    setItems([]);
+    setError(null);
+    setSuccessMsg(null);
+    setPreviewUrl(null);
+    if (fileRef.current) fileRef.current.value = "";
+  }
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setPreviewUrl(URL.createObjectURL(file));
+    if (mode === "image") setPreviewUrl(URL.createObjectURL(file));
     setItems([]);
     setError(null);
     setSuccessMsg(null);
   }
 
-  function handleScan() {
+  function handleProcess() {
     if (!formRef.current) return;
     const formData = new FormData(formRef.current);
     setError(null);
     setSuccessMsg(null);
-    startScan(async () => {
-      const result = await scanImage(formData);
+    startProcess(async () => {
+      const result = mode === "csv"
+        ? await parseCsvFile(formData)
+        : await scanImage(formData);
       if ("error" in result) {
         setError(result.error ?? "エラーが発生しました");
         return;
@@ -80,15 +93,16 @@ export function ScanPage({ accounts, categories }: Props) {
         return;
       }
       setSuccessMsg(`${result.count}件の取引を登録しました`);
-      setItems([]);
-      setPreviewUrl(null);
-      if (fileRef.current) fileRef.current.value = "";
+      resetState();
     });
   }
 
   const selectedCount = items.filter((it) => it.selected).length;
   const expenseCategories = categories.filter((c) => c.type === "EXPENSE");
   const incomeCategories = categories.filter((c) => c.type === "INCOME");
+
+  const csvInputName = "csv";
+  const imageInputName = "image";
 
   return (
     <div className="space-y-5">
@@ -109,41 +123,88 @@ export function ScanPage({ accounts, categories }: Props) {
         </div>
       </div>
 
-      {/* 画像アップロード */}
+      {/* モード切替タブ */}
+      <div className="flex gap-1 bg-gray-100 p-1 rounded-lg w-fit">
+        <button
+          onClick={() => { setMode("csv"); resetState(); }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mode === "csv" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          <FileSpreadsheet className="w-4 h-4" />
+          CSV取り込み
+        </button>
+        <button
+          onClick={() => { setMode("image"); resetState(); }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mode === "image" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          <ScanLine className="w-4 h-4" />
+          画像スキャン
+        </button>
+      </div>
+
+      {/* ファイルアップロード */}
       <div className="bg-white rounded-xl border border-gray-200 px-6 py-5">
         <form ref={formRef}>
-          <div
-            className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
-            onClick={() => fileRef.current?.click()}
-          >
-            {previewUrl ? (
-              <img src={previewUrl} alt="通帳プレビュー" className="max-h-64 mx-auto rounded object-contain" />
-            ) : (
+          {mode === "csv" ? (
+            <div
+              className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+              onClick={() => fileRef.current?.click()}
+            >
               <div className="flex flex-col items-center gap-2 text-gray-400">
-                <Upload className="w-10 h-10" />
-                <p className="text-sm">クリックして画像を選択</p>
-                <p className="text-xs">JPEG / PNG / WebP 対応</p>
+                <FileSpreadsheet className="w-10 h-10" />
+                {fileRef.current?.files?.[0]
+                  ? <p className="text-sm text-gray-700">{fileRef.current.files[0].name}</p>
+                  : <>
+                    <p className="text-sm">クリックしてCSVを選択</p>
+                    <p className="text-xs">銀行ネットバンキングからダウンロードしたCSV</p>
+                  </>
+                }
               </div>
-            )}
-          </div>
-          <input
-            ref={fileRef}
-            type="file"
-            name="image"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            className="hidden"
-            onChange={handleFileChange}
-          />
+              <input
+                ref={fileRef}
+                type="file"
+                name={csvInputName}
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+          ) : (
+            <div
+              className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+              onClick={() => fileRef.current?.click()}
+            >
+              {previewUrl ? (
+                <img src={previewUrl} alt="通帳プレビュー" className="max-h-64 mx-auto rounded object-contain" />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-gray-400">
+                  <Upload className="w-10 h-10" />
+                  <p className="text-sm">クリックして画像を選択</p>
+                  <p className="text-xs">JPEG / PNG / WebP 対応（Gemini APIキー設定時のみ動作）</p>
+                </div>
+              )}
+              <input
+                ref={fileRef}
+                type="file"
+                name={imageInputName}
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+            </div>
+          )}
         </form>
 
         <div className="mt-4 flex items-center gap-3">
           <Button
-            onClick={handleScan}
-            disabled={!previewUrl || isScanning || !accountId}
+            onClick={handleProcess}
+            disabled={isProcessing || !accountId}
             className="gap-2"
           >
-            {isScanning ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanLine className="w-4 h-4" />}
-            {isScanning ? "読み取り中…" : "スキャン"}
+            {isProcessing
+              ? <Loader2 className="w-4 h-4 animate-spin" />
+              : mode === "csv" ? <FileSpreadsheet className="w-4 h-4" /> : <ScanLine className="w-4 h-4" />
+            }
+            {isProcessing ? "読み込み中…" : mode === "csv" ? "CSVを読み込む" : "スキャン"}
           </Button>
           {!accountId && <p className="text-xs text-amber-600">先に口座を選択してください</p>}
         </div>
@@ -170,7 +231,7 @@ export function ScanPage({ accounts, categories }: Props) {
         <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
           <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
             <h2 className="text-sm font-semibold text-gray-700">
-              抽出結果 <span className="text-gray-400 font-normal">{items.length}件</span>
+              読み込み結果 <span className="text-gray-400 font-normal">{items.length}件</span>
             </h2>
             <Button variant="outline" size="sm" onClick={toggleAll}>
               {items.every((it) => it.selected) ? "全解除" : "全選択"}

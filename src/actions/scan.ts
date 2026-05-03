@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { scanBankStatement } from "@/lib/ai";
+import { parseBankCSV, decodeCsv } from "@/lib/csv";
 import { buildJournalEntries } from "@/lib/journal";
 import { revalidatePath } from "next/cache";
 import type { ScannedItem } from "@/types";
@@ -30,6 +31,23 @@ export async function scanImage(formData: FormData) {
   if (items.length === 0) return { error: "取引データを読み取れませんでした" };
 
   return { items };
+}
+
+export async function parseCsvFile(formData: FormData) {
+  const file = formData.get("csv") as File | null;
+  if (!file || file.size === 0) return { error: "CSVファイルを選択してください" };
+  if (!file.name.toLowerCase().endsWith(".csv")) return { error: "CSVファイルを選択してください" };
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const text = decodeCsv(buffer);
+    const items = parseBankCSV(text);
+    if (items.length === 0) return { error: "取引データを読み取れませんでした。銀行のCSV形式を確認してください。" };
+    return { items };
+  } catch (e) {
+    console.error("CSV parse error:", e);
+    return { error: "CSVの解析に失敗しました" };
+  }
 }
 
 export async function bulkCreateTransactions(
