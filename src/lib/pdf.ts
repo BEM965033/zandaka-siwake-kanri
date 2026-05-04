@@ -85,22 +85,8 @@ function extractDesc(line: string, dateRaw: string): string {
 }
 
 export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
-  // pdfjs-distをサーバー側で動的インポート
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  // Node.js環境ではワーカー不要
-  (pdfjs as any).GlobalWorkerOptions.workerSrc = "";
-
-  const pdf = await pdfjs.getDocument({ data: new Uint8Array(buffer), useWorkerFetch: false, useSystemFonts: true }).promise;
-  const parts: string[] = [];
-
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = content.items
-      .map((item: any) => ("str" in item ? item.str : ""))
-      .join(" ");
-    parts.push(pageText);
-  }
-
-  return parts.join("\n");
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+  const result = await pdfParse(Buffer.from(buffer));
+  return result.text;
 }
