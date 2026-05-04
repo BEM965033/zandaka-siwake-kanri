@@ -42,9 +42,8 @@ export async function parsePdfFile(formData: FormData) {
   try {
     const buffer = await file.arrayBuffer();
     const text = await extractTextFromPdf(buffer);
-    console.log("PDF raw text:", text.slice(0, 2000));
     const items = parsePdfText(text);
-    if (items.length === 0) return { error: `取引データを読み取れませんでした。\n\n[デバッグ用テキスト先頭500文字]\n${text.slice(0, 500)}` };
+    if (items.length === 0) return { error: "取引データを読み取れませんでした。PDFの形式を確認してください。" };
     return { items };
   } catch (e) {
     console.error("PDF parse error:", e);

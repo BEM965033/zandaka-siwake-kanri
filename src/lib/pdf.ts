@@ -1,87 +1,70 @@
 import type { ScannedItem } from "@/types";
 
-function parseAmount(raw: string): number {
-  const n = parseInt(raw.replace(/[¥￥,\s円+]/g, ""), 10);
-  return isNaN(n) ? 0 : Math.abs(n);
-}
-
-function parseDate(raw: string): string | null {
-  const s = raw.trim();
-  let m: RegExpMatchArray | null;
-
-  m = s.match(/(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-
-  m = s.match(/(\d{4})年(\d{1,2})月(\d{1,2})日?/);
-  if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-
-  m = s.match(/令和(\d+)年(\d{1,2})月(\d{1,2})日?/);
-  if (m) return `${2018 + parseInt(m[1])}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-
-  m = s.match(/平成(\d+)年(\d{1,2})月(\d{1,2})日?/);
-  if (m) return `${1988 + parseInt(m[1])}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-
-  const year = new Date().getFullYear();
-  m = s.match(/(\d{1,2})[\/\.](\d{1,2})/);
-  if (m) return `${year}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
-
-  return null;
-}
-
 export function parsePdfText(text: string): ScannedItem[] {
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const items: ScannedItem[] = [];
 
-  for (const line of lines) {
-    // 行頭が日付パターンで始まる行を対象にする
-    const dateMatch = line.match(/^(\d{4}[\/\-\.]\d{1,2}[\/\-\.]\d{1,2}|\d{1,2}[\/\.]\d{1,2}|\d{4}年\d{1,2}月\d{1,2}日?|令和\d+年\d{1,2}月\d{1,2}日?)/);
-    if (!dateMatch) continue;
+  // 年月をヘッダーから抽出
+  let year = new Date().getFullYear();
+  let month = new Date().getMonth() + 1;
+  const ymNum = text.match(/(\d{4})\s+(\d{1,2})\s+1/);
+  if (ymNum) { year = parseInt(ymNum[1]); month = parseInt(ymNum[2]); }
+  const ymJp = text.match(/(\d{4})年(\d{1,2})月/);
+  if (ymJp) { year = parseInt(ymJp[1]); month = parseInt(ymJp[2]); }
 
-    const date = parseDate(dateMatch[1]);
-    if (!date) continue;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const parseAmt = (s: string) => parseInt(s.replace(/,/g, ""), 10);
+  const hasJp = (s: string) => /[　-鿿゠-ヿ＀-￯]/.test(s);
 
-    // 行内の金額を全部抽出
-    const amountMatches = [...line.matchAll(/[¥￥]?(\d{1,3}(?:,\d{3})+|\d{4,})/g)];
-    const amounts = amountMatches.map((m) => parseAmount(m[0])).filter((n) => n >= 10);
-    if (amounts.length === 0) continue;
+  // テキストを1行に平坦化
+  const flat = text.replace(/\r?\n/g, " ");
 
-    // 出金・入金の両方が存在するか判定（列が2つある場合）
-    const debitMatch  = line.match(/出金[^\d]*([¥￥]?[\d,]+)/);
-    const creditMatch = line.match(/入金[^\d]*([¥￥]?[\d,]+)/);
-
-    if (debitMatch) {
-      const desc = extractDesc(line, dateMatch[1]);
-      const amount = parseAmount(debitMatch[1]);
-      if (amount > 0 && desc) items.push({ date, description: desc, amount, type: "EXPENSE" });
-      continue;
-    }
-    if (creditMatch) {
-      const desc = extractDesc(line, dateMatch[1]);
-      const amount = parseAmount(creditMatch[1]);
-      if (amount > 0 && desc) items.push({ date, description: desc, amount, type: "INCOME" });
-      continue;
-    }
-
-    // 列ラベルがない場合: 最後の金額=残高、その前=取引金額とみなす
-    const txAmount = amounts.length >= 2 ? amounts[amounts.length - 2] : amounts[amounts.length - 1];
-    if (txAmount <= 0) continue;
-
-    const desc = extractDesc(line, dateMatch[1]);
-    if (!desc) continue;
-
-    items.push({ date, description: desc, amount: txAmount, type: "EXPENSE" });
+  // 日付マーカー（1〜31の単独数字）の位置を記録
+  const dayMarkers: { index: number; day: number }[] = [];
+  const dayRe = /(?<![,\d])([12]?\d|3[01])(?!\d|,)(?=\s+[^\d])/g;
+  let dm: RegExpExecArray | null;
+  while ((dm = dayRe.exec(flat)) !== null) {
+    const d = parseInt(dm[1]);
+    if (d >= 1 && d <= 31) dayMarkers.push({ index: dm.index, day: d });
   }
 
-  return items;
-}
+  function getDayAt(pos: number): number {
+    let best = 1;
+    for (const marker of dayMarkers) {
+      if (marker.index <= pos) best = marker.day;
+      else break;
+    }
+    return best;
+  }
 
-function extractDesc(line: string, dateRaw: string): string {
-  return line
-    .replace(dateRaw, "")
-    .replace(/[¥￥]?\s*\d{1,3}(?:,\d{3})+/g, "")
-    .replace(/[¥￥]?\s*\d{4,}/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+  // 支出パターン: [日本語テキスト] [出金額] 0 [残高]
+  const expRe = /([^\d]{2,}?)\s+([\d,]{2,12})\s+0\s+([\d,]{2,12})/g;
+  let m: RegExpExecArray | null;
+  while ((m = expRe.exec(flat)) !== null) {
+    const desc = m[1].trim().replace(/\s+/g, " ");
+    const debit = parseAmt(m[2]);
+    if (debit <= 0 || !hasJp(desc)) continue;
+    const d = getDayAt(m.index);
+    items.push({ date: `${year}-${pad(month)}-${pad(d)}`, description: desc, amount: debit, type: "EXPENSE" });
+  }
+
+  // 収入パターン: [日本語テキスト] 0 [入金額] [残高]
+  const incRe = /([^\d]{2,}?)\s+0\s+([\d,]{2,12})\s+([\d,]{2,12})/g;
+  while ((m = incRe.exec(flat)) !== null) {
+    const desc = m[1].trim().replace(/\s+/g, " ");
+    const credit = parseAmt(m[2]);
+    if (credit <= 0 || !hasJp(desc)) continue;
+    const d = getDayAt(m.index);
+    items.push({ date: `${year}-${pad(month)}-${pad(d)}`, description: desc, amount: credit, type: "INCOME" });
+  }
+
+  // 重複除去
+  const seen = new Set<string>();
+  return items.filter((it) => {
+    const key = `${it.date}|${it.description}|${it.amount}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
