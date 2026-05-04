@@ -85,8 +85,10 @@ function extractDesc(line: string, dateRaw: string): string {
 }
 
 export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
+  // pdf-parseはindex.jsでテストファイルを読もうとするためサーバーレス環境で失敗する
+  // lib/pdf-parse.js を直接使うことで回避
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require("pdf-parse");
+  const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require("pdf-parse/lib/pdf-parse.js");
   const result = await pdfParse(Buffer.from(buffer));
   return result.text;
 }
