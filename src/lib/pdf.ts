@@ -86,7 +86,7 @@ function extractDesc(line: string, dateRaw: string): string {
 
 export async function extractTextFromPdf(buffer: ArrayBuffer): Promise<string> {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+  const pdfParse: (buf: Buffer) => Promise<{ text: string }> = require("pdf-parse");
   const result = await pdfParse(Buffer.from(buffer));
   return result.text;
 }
