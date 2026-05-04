@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { scanBankStatement } from "@/lib/ai";
 import { parseBankCSV, decodeCsv } from "@/lib/csv";
+import { extractTextFromPdf, parsePdfText } from "@/lib/pdf";
 import { buildJournalEntries } from "@/lib/journal";
 import { revalidatePath } from "next/cache";
 import type { ScannedItem } from "@/types";
@@ -31,6 +32,23 @@ export async function scanImage(formData: FormData) {
   if (items.length === 0) return { error: "取引データを読み取れませんでした" };
 
   return { items };
+}
+
+export async function parsePdfFile(formData: FormData) {
+  const file = formData.get("csv") as File | null;
+  if (!file || file.size === 0) return { error: "PDFファイルを選択してください" };
+  if (!file.name.toLowerCase().endsWith(".pdf")) return { error: "PDFファイルを選択してください" };
+
+  try {
+    const buffer = await file.arrayBuffer();
+    const text = await extractTextFromPdf(buffer);
+    const items = parsePdfText(text);
+    if (items.length === 0) return { error: "取引データを読み取れませんでした。PDFの形式を確認してください。" };
+    return { items };
+  } catch (e) {
+    console.error("PDF parse error:", e);
+    return { error: "PDFの解析に失敗しました" };
+  }
 }
 
 export async function parseCsvFile(formData: FormData) {

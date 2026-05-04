@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { parseCsvFile, bulkCreateTransactions } from "@/actions/scan";
+import { parseCsvFile, parsePdfFile, bulkCreateTransactions } from "@/actions/scan";
 import { parseOcrText } from "@/lib/ocr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import type { AccountWithBalance, CategoryOption, ScannedItem } from "@/types";
-import { Upload, FileSpreadsheet, ScanLine, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, ScanLine, FileText, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 
 interface Props {
   accounts: AccountWithBalance[];
@@ -22,7 +22,7 @@ interface EditableItem extends ScannedItem {
   selected: boolean;
 }
 
-type Mode = "csv" | "image";
+type Mode = "csv" | "pdf" | "image";
 
 export function ScanPage({ accounts, categories }: Props) {
   const [mode, setMode] = useState<Mode>("csv");
@@ -58,12 +58,12 @@ export function ScanPage({ accounts, categories }: Props) {
     setError(null);
     setSuccessMsg(null);
 
-    if (mode === "csv") {
+    if (mode === "csv" || mode === "pdf") {
       if (!formRef.current) return;
       const formData = new FormData(formRef.current);
       setIsProcessing(true);
       startProcess(async () => {
-        const result = await parseCsvFile(formData);
+        const result = mode === "csv" ? await parseCsvFile(formData) : await parsePdfFile(formData);
         setIsProcessing(false);
         if ("error" in result) { setError(result.error ?? "エラーが発生しました"); return; }
         setItems(result.items.map((item, i) => ({ ...item, id: String(i), selected: true })));
@@ -154,7 +154,14 @@ export function ScanPage({ accounts, categories }: Props) {
           className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mode === "csv" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
         >
           <FileSpreadsheet className="w-4 h-4" />
-          CSV取り込み
+          CSV
+        </button>
+        <button
+          onClick={() => { setMode("pdf"); resetState(); }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mode === "pdf" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          <FileText className="w-4 h-4" />
+          PDF
         </button>
         <button
           onClick={() => { setMode("image"); resetState(); }}
@@ -168,7 +175,31 @@ export function ScanPage({ accounts, categories }: Props) {
       {/* ファイルアップロード */}
       <div className="bg-white rounded-xl border border-gray-200 px-6 py-5">
         <form ref={formRef}>
-          {mode === "csv" ? (
+          {mode === "pdf" ? (
+          <div
+            className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+            onClick={() => fileRef.current?.click()}
+          >
+            <div className="flex flex-col items-center gap-2 text-gray-400">
+              <FileText className="w-10 h-10" />
+              {fileRef.current?.files?.[0]
+                ? <p className="text-sm text-gray-700">{fileRef.current.files[0].name}</p>
+                : <>
+                  <p className="text-sm">クリックしてPDFを選択</p>
+                  <p className="text-xs">ネットバンキングの明細PDFに対応</p>
+                </>
+              }
+            </div>
+            <input
+              ref={fileRef}
+              type="file"
+              name={csvInputName}
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={handleFileChange}
+            />
+          </div>
+        ) : mode === "csv" ? (
             <div
               className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
               onClick={() => fileRef.current?.click()}
@@ -226,9 +257,9 @@ export function ScanPage({ accounts, categories }: Props) {
           >
             {isProcessing
               ? <Loader2 className="w-4 h-4 animate-spin" />
-              : mode === "csv" ? <FileSpreadsheet className="w-4 h-4" /> : <ScanLine className="w-4 h-4" />
+              : mode === "csv" ? <FileSpreadsheet className="w-4 h-4" /> : mode === "pdf" ? <FileText className="w-4 h-4" /> : <ScanLine className="w-4 h-4" />
             }
-            {isProcessing ? "読み込み中…" : mode === "csv" ? "CSVを読み込む" : "スキャン"}
+            {isProcessing ? "読み込み中…" : mode === "csv" ? "CSVを読み込む" : mode === "pdf" ? "PDFを読み込む" : "スキャン"}
           </Button>
           {!accountId && <p className="text-xs text-amber-600">先に口座を選択してください</p>}
         </div>
