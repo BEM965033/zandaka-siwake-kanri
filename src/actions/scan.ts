@@ -44,7 +44,7 @@ export async function parsePdfFile(formData: FormData) {
     const text = await extractTextFromPdf(buffer);
     const items = parsePdfText(text);
     if (items.length === 0) return { error: "取引データを読み取れませんでした。PDFの形式を確認してください。" };
-    return { items, rawText: text.substring(0, 2000) };
+    return { items };
   } catch (e) {
     console.error("PDF parse error:", e);
     return { error: "PDFの解析に失敗しました" };
