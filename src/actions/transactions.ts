@@ -315,3 +315,78 @@ export async function updateTransactionCategory(id: string, categoryId: string |
   revalidatePath("/transactions");
   return { success: true };
 }
+
+export async function updateTransaction(
+  id: string,
+  data: {
+    type: string;
+    categoryId: string | null;
+    fromAccountId: string | null;
+    toAccountId: string | null;
+  }
+) {
+  const tx = await prisma.transaction.findUnique({
+    where: { id },
+    include: { fromAccount: true, toAccount: true },
+  });
+  if (!tx) return { error: "取引が見つかりません" };
+
+  const amount = Number(tx.amount);
+
+  // 旧残高を戻す
+  const ops = [];
+  if (tx.type === "EXPENSE" && tx.fromAccountId)
+    ops.push(prisma.account.update({ where: { id: tx.fromAccountId }, data: { balance: { increment: amount } } }));
+  if (tx.type === "INCOME" && tx.toAccountId)
+    ops.push(prisma.account.update({ where: { id: tx.toAccountId }, data: { balance: { decrement: amount } } }));
+  if (tx.type === "TRANSFER") {
+    if (tx.fromAccountId) ops.push(prisma.account.update({ where: { id: tx.fromAccountId }, data: { balance: { increment: amount } } }));
+    if (tx.toAccountId)   ops.push(prisma.account.update({ where: { id: tx.toAccountId },   data: { balance: { decrement: amount } } }));
+  }
+
+  // 新残高を適用
+  if (data.type === "EXPENSE" && data.fromAccountId)
+    ops.push(prisma.account.update({ where: { id: data.fromAccountId }, data: { balance: { decrement: amount } } }));
+  if (data.type === "INCOME" && data.toAccountId)
+    ops.push(prisma.account.update({ where: { id: data.toAccountId }, data: { balance: { increment: amount } } }));
+  if (data.type === "TRANSFER") {
+    if (data.fromAccountId) ops.push(prisma.account.update({ where: { id: data.fromAccountId }, data: { balance: { decrement: amount } } }));
+    if (data.toAccountId)   ops.push(prisma.account.update({ where: { id: data.toAccountId },   data: { balance: { increment: amount } } }));
+  }
+
+  const [category, fromAccount, toAccount] = await Promise.all([
+    data.categoryId ? prisma.category.findUnique({ where: { id: data.categoryId } }) : null,
+    data.fromAccountId ? prisma.account.findUnique({ where: { id: data.fromAccountId } }) : null,
+    data.toAccountId  ? prisma.account.findUnique({ where: { id: data.toAccountId  } }) : null,
+  ]);
+
+  const journalLines = buildJournalEntries({
+    type: data.type as "EXPENSE" | "INCOME" | "TRANSFER",
+    amount,
+    description: tx.description,
+    fromAccountType: fromAccount?.type ?? undefined,
+    toAccountType: toAccount?.type ?? undefined,
+    categoryDebitAccount: category?.debitAccount ?? undefined,
+    categoryCreditAccount: category?.creditAccount ?? undefined,
+  });
+
+  await prisma.$transaction([
+    ...ops,
+    prisma.journalEntry.deleteMany({ where: { transactionId: id } }),
+    prisma.transaction.update({
+      where: { id },
+      data: {
+        type: data.type as "EXPENSE" | "INCOME" | "TRANSFER",
+        categoryId: data.categoryId ?? null,
+        isClassified: data.type === "TRANSFER" ? true : !!data.categoryId,
+        fromAccountId: data.fromAccountId ?? null,
+        toAccountId: data.toAccountId ?? null,
+        journalEntries: { create: journalLines },
+      },
+    }),
+  ]);
+
+  revalidatePath("/");
+  revalidatePath("/transactions");
+  return { success: true };
+}

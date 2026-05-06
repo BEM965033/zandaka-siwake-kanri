@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteTransaction, updateTransactionCategory } from "@/actions/transactions";
+import { deleteTransaction, updateTransaction } from "@/actions/transactions";
 import { formatCurrency, formatDate, getTransactionTypeLabel } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { TransactionWithRelations, AccountType, CategoryType } from "@/types";
@@ -23,22 +23,32 @@ const typeBadgeColors: Record<string, string> = {
 export function TransactionList({ transactions, accounts, categories, currentFilters }: Props) {
   const router = useRouter();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editType, setEditType] = useState<string>("");
   const [editCategoryId, setEditCategoryId] = useState<string>("");
+  const [editFromAccountId, setEditFromAccountId] = useState<string>("");
+  const [editToAccountId, setEditToAccountId] = useState<string>("");
   const [isSaving, startSave] = useTransition();
 
   function startEdit(t: TransactionWithRelations) {
     setEditingId(t.id);
+    setEditType(t.type);
     setEditCategoryId(t.category?.id ?? "");
+    setEditFromAccountId(t.fromAccount?.id ?? "");
+    setEditToAccountId(t.toAccount?.id ?? "");
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setEditCategoryId("");
   }
 
-  function saveCategory(id: string) {
+  function saveEdit(id: string) {
     startSave(async () => {
-      await updateTransactionCategory(id, editCategoryId || null);
+      await updateTransaction(id, {
+        type: editType,
+        categoryId: editCategoryId || null,
+        fromAccountId: editFromAccountId || null,
+        toAccountId: editToAccountId || null,
+      });
       setEditingId(null);
       router.refresh();
     });
@@ -172,24 +182,67 @@ export function TransactionList({ transactions, accounts, categories, currentFil
                   <tr key={t.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDate(t.date)}</td>
                     <td className="px-4 py-3">
-                      <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", typeBadgeColors[t.type])}>
-                        {getTransactionTypeLabel(t.type)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-800 max-w-[200px] truncate">{t.description}</td>
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{accountLabel ?? "-"}</td>
-                    <td className="px-4 py-3 text-gray-600">
                       {editingId === t.id ? (
                         <select
-                          value={editCategoryId}
-                          onChange={(e) => setEditCategoryId(e.target.value)}
+                          value={editType}
+                          onChange={(e) => { setEditType(e.target.value); setEditCategoryId(""); setEditFromAccountId(""); setEditToAccountId(""); }}
                           className="h-7 rounded border border-input bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
                         >
-                          <option value="">未分類</option>
-                          {categories.filter((c) => c.type === t.type).map((c) => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
-                          ))}
+                          <option value="EXPENSE">支出</option>
+                          <option value="INCOME">収入</option>
+                          <option value="TRANSFER">振替</option>
                         </select>
+                      ) : (
+                        <span className={cn("text-xs px-2 py-0.5 rounded-full font-medium", typeBadgeColors[t.type])}>
+                          {getTransactionTypeLabel(t.type)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-800 max-w-[200px] truncate">{t.description}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {editingId === t.id ? (
+                        <span className="flex flex-col gap-1">
+                          {(editType === "EXPENSE" || editType === "TRANSFER") && (
+                            <select
+                              value={editFromAccountId}
+                              onChange={(e) => setEditFromAccountId(e.target.value)}
+                              className="h-7 rounded border border-input bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              <option value="">出金口座</option>
+                              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            </select>
+                          )}
+                          {(editType === "INCOME" || editType === "TRANSFER") && (
+                            <select
+                              value={editToAccountId}
+                              onChange={(e) => setEditToAccountId(e.target.value)}
+                              className="h-7 rounded border border-input bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                            >
+                              <option value="">入金口座</option>
+                              {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            </select>
+                          )}
+                        </span>
+                      ) : (
+                        accountLabel ?? "-"
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {editingId === t.id ? (
+                        editType === "TRANSFER" ? (
+                          <span className="text-xs text-gray-400">—</span>
+                        ) : (
+                          <select
+                            value={editCategoryId}
+                            onChange={(e) => setEditCategoryId(e.target.value)}
+                            className="h-7 rounded border border-input bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                          >
+                            <option value="">未分類</option>
+                            {categories.filter((c) => c.type === editType).map((c) => (
+                              <option key={c.id} value={c.id}>{c.name}</option>
+                            ))}
+                          </select>
+                        )
                       ) : (
                         t.category?.name ?? <span className="text-yellow-600 text-xs">未分類</span>
                       )}
@@ -204,7 +257,7 @@ export function TransactionList({ transactions, accounts, categories, currentFil
                       {editingId === t.id ? (
                         <span className="flex gap-2 justify-end">
                           <button
-                            onClick={() => saveCategory(t.id)}
+                            onClick={() => saveEdit(t.id)}
                             disabled={isSaving}
                             className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
                           >
