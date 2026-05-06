@@ -316,11 +316,13 @@ export function ScanPage({ accounts, categories }: Props) {
                     placeholder="摘要"
                   />
                   <Input
-                    type="number"
-                    value={item.amount}
-                    onChange={(e) => updateItem(item.id, "amount", Number(e.target.value))}
-                    className="text-sm h-8"
-                    min={1}
+                    type="text"
+                    value={item.amount.toLocaleString("ja-JP")}
+                    onChange={(e) => {
+                      const raw = Number(e.target.value.replace(/,/g, ""));
+                      if (!isNaN(raw)) updateItem(item.id, "amount", raw);
+                    }}
+                    className="text-sm h-8 text-right"
                   />
                   <div className="flex items-center gap-2">
                     <Badge
