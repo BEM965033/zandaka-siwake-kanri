@@ -277,3 +277,41 @@ export async function deleteTransaction(id: string) {
   revalidatePath("/transactions");
   return { success: true };
 }
+
+export async function updateTransactionCategory(id: string, categoryId: string | null) {
+  const tx = await prisma.transaction.findUnique({
+    where: { id },
+    include: { fromAccount: true, toAccount: true },
+  });
+  if (!tx) return { error: "取引が見つかりません" };
+
+  const category = categoryId
+    ? await prisma.category.findUnique({ where: { id: categoryId } })
+    : null;
+
+  const journalLines = buildJournalEntries({
+    type: tx.type,
+    amount: Number(tx.amount),
+    description: tx.description,
+    fromAccountType: tx.fromAccount?.type ?? undefined,
+    toAccountType: tx.toAccount?.type ?? undefined,
+    categoryDebitAccount: category?.debitAccount ?? undefined,
+    categoryCreditAccount: category?.creditAccount ?? undefined,
+  });
+
+  await prisma.$transaction([
+    prisma.journalEntry.deleteMany({ where: { transactionId: id } }),
+    prisma.transaction.update({
+      where: { id },
+      data: {
+        categoryId: categoryId ?? null,
+        isClassified: !!categoryId,
+        journalEntries: { create: journalLines },
+      },
+    }),
+  ]);
+
+  revalidatePath("/");
+  revalidatePath("/transactions");
+  return { success: true };
+}

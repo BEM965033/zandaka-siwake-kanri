@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteTransaction } from "@/actions/transactions";
+import { deleteTransaction, updateTransactionCategory } from "@/actions/transactions";
 import { formatCurrency, formatDate, getTransactionTypeLabel } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { TransactionWithRelations, AccountType, CategoryType } from "@/types";
@@ -22,6 +22,28 @@ const typeBadgeColors: Record<string, string> = {
 
 export function TransactionList({ transactions, accounts, categories, currentFilters }: Props) {
   const router = useRouter();
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editCategoryId, setEditCategoryId] = useState<string>("");
+  const [isSaving, startSave] = useTransition();
+
+  function startEdit(t: TransactionWithRelations) {
+    setEditingId(t.id);
+    setEditCategoryId(t.category?.id ?? "");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditCategoryId("");
+  }
+
+  function saveCategory(id: string) {
+    startSave(async () => {
+      await updateTransactionCategory(id, editCategoryId || null);
+      setEditingId(null);
+      router.refresh();
+    });
+  }
+
   const [filters, setFilters] = useState({
     type: currentFilters.type ?? "ALL",
     accountId: currentFilters.accountId ?? "ALL",
@@ -156,20 +178,61 @@ export function TransactionList({ transactions, accounts, categories, currentFil
                     </td>
                     <td className="px-4 py-3 text-gray-800 max-w-[200px] truncate">{t.description}</td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{accountLabel ?? "-"}</td>
-                    <td className="px-4 py-3 text-gray-600">{t.category?.name ?? <span className="text-yellow-600 text-xs">未分類</span>}</td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {editingId === t.id ? (
+                        <select
+                          value={editCategoryId}
+                          onChange={(e) => setEditCategoryId(e.target.value)}
+                          className="h-7 rounded border border-input bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        >
+                          <option value="">未分類</option>
+                          {categories.filter((c) => c.type === t.type).map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        t.category?.name ?? <span className="text-yellow-600 text-xs">未分類</span>
+                      )}
+                    </td>
                     <td className={cn(
                       "px-4 py-3 text-right font-bold tabular-nums whitespace-nowrap",
                       t.type === "EXPENSE" ? "text-red-600" : t.type === "INCOME" ? "text-green-600" : "text-blue-600"
                     )}>
                       {sign}{formatCurrency(amount)}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => handleDelete(t.id)}
-                        className="text-xs text-gray-400 hover:text-red-600 transition-colors"
-                      >
-                        削除
-                      </button>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {editingId === t.id ? (
+                        <span className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => saveCategory(t.id)}
+                            disabled={isSaving}
+                            className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                          >
+                            {isSaving ? "保存中…" : "保存"}
+                          </button>
+                          <button
+                            onClick={cancelEdit}
+                            className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                          >
+                            キャンセル
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => startEdit(t)}
+                            className="text-xs text-gray-400 hover:text-blue-600 transition-colors"
+                          >
+                            編集
+                          </button>
+                          <button
+                            onClick={() => handleDelete(t.id)}
+                            className="text-xs text-gray-400 hover:text-red-600 transition-colors"
+                          >
+                            削除
+                          </button>
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );
