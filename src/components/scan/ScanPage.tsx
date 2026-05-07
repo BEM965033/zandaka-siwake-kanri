@@ -31,6 +31,7 @@ export function ScanPage({ accounts, categories }: Props) {
   const [items, setItems] = useState<EditableItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [ocrDebug, setOcrDebug] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [, startProcess] = useTransition();
   const [isRegistering, startRegister] = useTransition();
@@ -81,6 +82,7 @@ export function ScanPage({ accounts, categories }: Props) {
         });
         const { data: { text } } = await worker.recognize(file);
         await worker.terminate();
+        setOcrDebug(text);
         const parsed = parseOcrText(text);
         if (parsed.length === 0) { setError("取引データを読み取れませんでした。画像を確認してください。"); }
         else { setItems(parsed.map((item, i) => ({ ...item, id: String(i), selected: true }))); }
@@ -264,6 +266,14 @@ export function ScanPage({ accounts, categories }: Props) {
           {!accountId && <p className="text-xs text-amber-600">先に口座を選択してください</p>}
         </div>
       </div>
+
+      {/* OCRデバッグ */}
+      {ocrDebug && (
+        <details className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 text-xs">
+          <summary className="cursor-pointer text-gray-500 font-medium">【デバッグ】OCR生テキスト</summary>
+          <pre className="mt-2 whitespace-pre-wrap break-all text-gray-600">{ocrDebug}</pre>
+        </details>
+      )}
 
       {/* エラー */}
       {error && (
