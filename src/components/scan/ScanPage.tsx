@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import type { AccountWithBalance, CategoryOption, ScannedItem } from "@/types";
-import { Upload, FileSpreadsheet, ScanLine, FileText, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { Upload, FileSpreadsheet, ScanLine, FileText, CheckCircle2, Loader2, AlertCircle, ClipboardPaste } from "lucide-react";
 
 interface Props {
   accounts: AccountWithBalance[];
@@ -22,7 +22,7 @@ interface EditableItem extends ScannedItem {
   selected: boolean;
 }
 
-type Mode = "csv" | "pdf" | "image";
+type Mode = "csv" | "pdf" | "image" | "text";
 
 export function ScanPage({ accounts, categories }: Props) {
   const [mode, setMode] = useState<Mode>("csv");
@@ -32,6 +32,7 @@ export function ScanPage({ accounts, categories }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [ocrDebug, setOcrDebug] = useState<string | null>(null);
+  const [pasteText, setPasteText] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [, startProcess] = useTransition();
   const [isRegistering, startRegister] = useTransition();
@@ -43,6 +44,7 @@ export function ScanPage({ accounts, categories }: Props) {
     setError(null);
     setSuccessMsg(null);
     setPreviewUrl(null);
+    setPasteText("");
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -58,6 +60,14 @@ export function ScanPage({ accounts, categories }: Props) {
   async function handleProcess() {
     setError(null);
     setSuccessMsg(null);
+
+    if (mode === "text") {
+      if (!pasteText.trim()) { setError("テキストを貼り付けてください"); return; }
+      const parsed = parseOcrText(pasteText);
+      if (parsed.length === 0) { setError("取引データを読み取れませんでした。テキストの形式を確認してください。"); return; }
+      setItems(parsed.map((item, i) => ({ ...item, id: String(i), selected: true })));
+      return;
+    }
 
     if (mode === "csv" || mode === "pdf") {
       if (!formRef.current) return;
@@ -172,12 +182,30 @@ export function ScanPage({ accounts, categories }: Props) {
           <ScanLine className="w-4 h-4" />
           画像スキャン
         </button>
+        <button
+          onClick={() => { setMode("text"); resetState(); }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${mode === "text" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}
+        >
+          <ClipboardPaste className="w-4 h-4" />
+          テキスト貼付
+        </button>
       </div>
 
       {/* ファイルアップロード */}
       <div className="bg-white rounded-xl border border-gray-200 px-6 py-5">
         <form ref={formRef}>
-          {mode === "pdf" ? (
+          {mode === "text" ? (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500">Google レンズ等で認識したテキストを貼り付けてください</p>
+              <textarea
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                rows={8}
+                placeholder={"例）\n8- 4- 6  振込入金* イカイセイカイ  350,000\n8- 4- 9  ATM振込  60,000"}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400 resize-y"
+              />
+            </div>
+          ) : mode === "pdf" ? (
           <div
             className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
             onClick={() => fileRef.current?.click()}
@@ -259,9 +287,9 @@ export function ScanPage({ accounts, categories }: Props) {
           >
             {isProcessing
               ? <Loader2 className="w-4 h-4 animate-spin" />
-              : mode === "csv" ? <FileSpreadsheet className="w-4 h-4" /> : mode === "pdf" ? <FileText className="w-4 h-4" /> : <ScanLine className="w-4 h-4" />
+              : mode === "csv" ? <FileSpreadsheet className="w-4 h-4" /> : mode === "pdf" ? <FileText className="w-4 h-4" /> : mode === "text" ? <ClipboardPaste className="w-4 h-4" /> : <ScanLine className="w-4 h-4" />
             }
-            {isProcessing ? "読み込み中…" : mode === "csv" ? "CSVを読み込む" : mode === "pdf" ? "PDFを読み込む" : "スキャン"}
+            {isProcessing ? "読み込み中…" : mode === "csv" ? "CSVを読み込む" : mode === "pdf" ? "PDFを読み込む" : mode === "text" ? "テキストを解析" : "スキャン"}
           </Button>
           {!accountId && <p className="text-xs text-amber-600">先に口座を選択してください</p>}
         </div>
