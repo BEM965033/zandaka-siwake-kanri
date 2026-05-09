@@ -119,7 +119,7 @@ export async function bulkCreateTransactions(
           isClassified: !!item.categoryId,
           fromAccountId: item.type === "EXPENSE" ? accountId : null,
           toAccountId: item.type === "INCOME" ? accountId : null,
-          categoryId: item.categoryId ?? null,
+          categoryId: item.categoryId || null,
           journalEntries: { create: journalLines },
         },
       }),
@@ -131,8 +131,7 @@ export async function bulkCreateTransactions(
 
   } catch (e) {
     console.error("bulk create error:", e);
-    const msg = e instanceof Error ? e.message : String(e);
-    return { error: `登録中にエラーが発生しました: ${msg.slice(0, 120)}` };
+    return { error: "登録中にエラーが発生しました" };
   }
 
   revalidatePath("/");
