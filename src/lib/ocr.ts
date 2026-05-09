@@ -1,71 +1,89 @@
 import type { ScannedItem } from "@/types";
 
-function parseAmount(raw: string): number {
-  const n = parseInt(raw.replace(/[¥￥,\s]/g, ""), 10);
-  return isNaN(n) ? 0 : Math.abs(n);
+function extractNumbers(line: string): number[] {
+  const matches = [...line.matchAll(/([\d,]{3,})/g)];
+  return matches
+    .map((m) => parseInt(m[1].replace(/,/g, ""), 10))
+    .filter((n) => !isNaN(n) && n >= 100);
 }
 
-function parsePassbookDate(line: string): { date: string; rest: string } | null {
-  // 令和 Y-MM-DD 形式: "8- 4- 6" / "R8-4-6" / "D 8- 4- 6" など
-  // 行のどこかに Y-M-D パターンがあれば採用
-  const m = line.match(/(?:^|[^\d])(\d{1,2})-\s*(\d{1,2})-\s*(\d{1,2})(?!\d)/);
+function parseDate(line: string): string | null {
+  // Y-M-D 形式（令和年）: "8-4-9" / "8-4-10"
+  const m = line.match(/^(\d{1,2})-(\d{1,2})-(\d{1,2})$/);
   if (m) {
     const ry = parseInt(m[1]);
-    const mo = m[2].padStart(2, "0");
-    const d  = m[3].padStart(2, "0");
-    // Reiwa 元年=2019。1〜20の範囲なら令和年として扱う
     const year = ry >= 1 && ry <= 20 ? 2018 + ry : new Date().getFullYear();
-    const date = `${year}-${mo}-${d}`;
-    // 日付部分より後ろのテキストを返す
-    const endIdx = m.index! + m[0].length;
-    return { date, rest: line.slice(endIdx) };
+    return `${year}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  }
+  // MM/DD 形式
+  const m2 = line.match(/^(\d{1,2})[\/\.](\d{1,2})$/);
+  if (m2) {
+    const year = new Date().getFullYear();
+    return `${year}-${m2[1].padStart(2, "0")}-${m2[2].padStart(2, "0")}`;
   }
   return null;
 }
 
-function parseMonthDayDate(line: string, year: number): { date: string; rest: string } | null {
-  // MM/DD or MM.DD 形式
-  const m = line.match(/^(\d{1,2})[\/\.]\s*(\d{1,2})/);
-  if (m) {
-    const date = `${year}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
-    return { date, rest: line.slice(m[0].length) };
-  }
-  return null;
+function isLikelyNoise(line: string): boolean {
+  // "22./29.350,000" のようなゴミ行
+  return /^\d+[\.\/]\d+[\.\/]/.test(line);
+}
+
+function isLikelyAmount(line: string): boolean {
+  return /^[¥￥]?\s*[\d,]+\s*$/.test(line);
 }
 
 export function parseOcrText(text: string): ScannedItem[] {
-  const currentYear = new Date().getFullYear();
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const items: ScannedItem[] = [];
 
+  // 日付でセクション分割
+  type Section = { date: string; lines: string[] };
+  const sections: Section[] = [];
+  let current: Section | null = null;
+
   for (const line of lines) {
-    let parsed = parsePassbookDate(line) ?? parseMonthDayDate(line, currentYear);
-    if (!parsed) continue;
+    const date = parseDate(line);
+    if (date) {
+      if (current) sections.push(current);
+      current = { date, lines: [] };
+    } else if (current) {
+      current.lines.push(line);
+    }
+  }
+  if (current) sections.push(current);
 
-    const { date, rest } = parsed;
+  // 各セクションから内容と金額を抽出
+  for (const { date, lines: sectionLines } of sections) {
+    const descLines: string[] = [];
+    const amounts: number[] = [];
 
-    // 行内のすべての金額を抽出（カンマ区切り数字）
-    const amountMatches = [...rest.matchAll(/(\d{1,3}(?:,\d{3})+|\d{4,})/g)];
-    const amounts = amountMatches
-      .map((m) => parseAmount(m[0]))
-      .filter((n) => n >= 100); // 100円未満は行番号等の可能性があるので除外
+    for (const line of sectionLines) {
+      if (isLikelyNoise(line)) {
+        // ノイズ行でも数字は拾う
+        amounts.push(...extractNumbers(line));
+        continue;
+      }
+      if (isLikelyAmount(line)) {
+        amounts.push(...extractNumbers(line));
+        continue;
+      }
+      // 数字を含む行でも説明テキストがあれば両方処理
+      const nums = extractNumbers(line);
+      if (nums.length > 0) amounts.push(...nums);
+      // 日本語または英字を含む行は説明扱い
+      if (/[ぁ-ん゠-ヿ一-鿿ｦ-ﾟA-Za-z\*]/.test(line)) {
+        descLines.push(line);
+      }
+    }
 
-    if (amounts.length === 0) continue;
+    if (descLines.length === 0 || amounts.length === 0) continue;
 
-    // 最後は残高の可能性が高いため除外、その直前が取引金額
-    const txAmount = amounts.length >= 2 ? amounts[amounts.length - 2] : amounts[amounts.length - 1];
-    if (txAmount <= 0) continue;
+    // 最大の金額を取引金額として採用（残高より取引額の方が小さい場合もあるので最初の金額を優先）
+    const amount = amounts[0];
+    const description = descLines.join(" ").replace(/\s+/g, " ").trim();
 
-    // 摘要: 数字を除いた残りのテキスト
-    const desc = rest
-      .replace(/(\d{1,3}(?:,\d{3})+|\d{4,})/g, "")
-      .replace(/[カ入出引振替金¥￥\s]+$/g, "")
-      .trim()
-      .replace(/\s+/g, " ");
-
-    if (!desc) continue;
-
-    items.push({ date, description: desc, amount: txAmount, type: "EXPENSE" });
+    items.push({ date, description, amount, type: "EXPENSE" });
   }
 
   return items;
