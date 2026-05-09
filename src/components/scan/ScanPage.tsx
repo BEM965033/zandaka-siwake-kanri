@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { parseCsvFile, parsePdfFile, bulkCreateTransactions } from "@/actions/scan";
+import { parseCsvFile, parsePdfFile, bulkCreateTransactions, suggestCategories } from "@/actions/scan";
 import { parseOcrText } from "@/lib/ocr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,7 @@ export function ScanPage({ accounts, categories }: Props) {
       if (!pasteText.trim()) { setError("テキストを貼り付けてください"); return; }
       const parsed = parseOcrText(pasteText);
       if (parsed.length === 0) { setError("取引データを読み取れませんでした。テキストの形式を確認してください。"); return; }
-      setItems(parsed.map((item, i) => ({ ...item, id: String(i), selected: true })));
+      setItems(await applykategorySuggestions(parsed));
       return;
     }
 
@@ -77,7 +77,7 @@ export function ScanPage({ accounts, categories }: Props) {
         const result = mode === "csv" ? await parseCsvFile(formData) : await parsePdfFile(formData);
         setIsProcessing(false);
         if ("error" in result) { setError(result.error ?? "エラーが発生しました"); return; }
-        setItems(result.items.map((item, i) => ({ ...item, id: String(i), selected: true })));
+        setItems(await applykategorySuggestions(result.items));
       });
     } else {
       const file = fileRef.current?.files?.[0];
@@ -95,7 +95,7 @@ export function ScanPage({ accounts, categories }: Props) {
         setOcrDebug(text);
         const parsed = parseOcrText(text);
         if (parsed.length === 0) { setError("取引データを読み取れませんでした。画像を確認してください。"); }
-        else { setItems(parsed.map((item, i) => ({ ...item, id: String(i), selected: true }))); }
+        else { setItems(await applykategorySuggestions(parsed)); }
       } catch (e) {
         console.error(e);
         setError("OCR処理に失敗しました");
@@ -103,6 +103,17 @@ export function ScanPage({ accounts, categories }: Props) {
         setIsProcessing(false);
       }
     }
+  }
+
+  async function applykategorySuggestions(parsed: ScannedItem[]) {
+    const descriptions = [...new Set(parsed.map((i) => i.description))];
+    const suggestions = await suggestCategories(descriptions);
+    return parsed.map((item, i) => ({
+      ...item,
+      id: String(i),
+      selected: true,
+      categoryId: suggestions[item.description] ?? item.categoryId ?? "",
+    }));
   }
 
   function toggleSelect(id: string) {

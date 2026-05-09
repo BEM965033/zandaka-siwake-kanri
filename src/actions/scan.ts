@@ -68,6 +68,21 @@ export async function parseCsvFile(formData: FormData) {
   }
 }
 
+export async function suggestCategories(descriptions: string[]): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  for (const desc of descriptions) {
+    // 先頭12文字で部分一致、カテゴリ付き取引の直近を返す
+    const key = desc.slice(0, 12);
+    const match = await prisma.transaction.findFirst({
+      where: { categoryId: { not: null }, description: { contains: key } },
+      orderBy: { createdAt: "desc" },
+      select: { categoryId: true },
+    });
+    if (match?.categoryId) result[desc] = match.categoryId;
+  }
+  return result;
+}
+
 export async function bulkCreateTransactions(
   items: ScannedItem[],
   accountId: string
