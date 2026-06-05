@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition, useRef } from "react";
-import { parseCsvFile, parsePdfFile, bulkCreateTransactions, suggestCategories } from "@/actions/scan";
+import { parseCsvFile, parsePdfFile, scanImage, bulkCreateTransactions, suggestCategories } from "@/actions/scan";
 import { parseOcrText } from "@/lib/ocr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,28 +104,15 @@ export function ScanPage({ accounts, categories }: Props) {
         setItems(await applykategorySuggestions(result.items));
       });
     } else {
-      const file = fileRef.current?.files?.[0];
-      if (!file) { setError("画像を選択してください"); return; }
+      if (!formRef.current) return;
+      const formData = new FormData(formRef.current);
       setIsProcessing(true);
-      try {
-        const { createWorker } = await import("tesseract.js");
-        const worker = await createWorker("jpn", 1, {
-          workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@6/dist/worker.min.js",
-          langPath: "https://tessdata.projectnaptha.com/4.0.0",
-          corePath: "https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd-lstm.wasm.js",
-        });
-        const { data: { text } } = await worker.recognize(file);
-        await worker.terminate();
-        setOcrDebug(text);
-        const parsed = parseOcrText(text);
-        if (parsed.length === 0) { setError("取引データを読み取れませんでした。画像を確認してください。"); }
-        else { setItems(await applykategorySuggestions(parsed)); }
-      } catch (e) {
-        console.error(e);
-        setError("OCR処理に失敗しました");
-      } finally {
+      startProcess(async () => {
+        const result = await scanImage(formData);
         setIsProcessing(false);
-      }
+        if ("error" in result) { setError(result.error ?? "エラーが発生しました"); return; }
+        setItems(await applykategorySuggestions(result.items));
+      });
     }
   }
 
