@@ -34,6 +34,7 @@ export function ScanPage({ accounts, categories }: Props) {
   const [ocrDebug, setOcrDebug] = useState<string | null>(null);
   const [pasteText, setPasteText] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [, startProcess] = useTransition();
   const [isRegistering, startRegister] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -51,6 +52,29 @@ export function ScanPage({ accounts, categories }: Props) {
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (mode === "image") setPreviewUrl(URL.createObjectURL(file));
+    setItems([]);
+    setError(null);
+    setSuccessMsg(null);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragging(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    if (fileRef.current) fileRef.current.files = dt.files;
     if (mode === "image") setPreviewUrl(URL.createObjectURL(file));
     setItems([]);
     setError(null);
@@ -218,15 +242,18 @@ export function ScanPage({ accounts, categories }: Props) {
             </div>
           ) : mode === "pdf" ? (
           <div
-            className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+            className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragging ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-400"}`}
             onClick={() => fileRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
             <div className="flex flex-col items-center gap-2 text-gray-400">
               <FileText className="w-10 h-10" />
               {fileRef.current?.files?.[0]
                 ? <p className="text-sm text-gray-700">{fileRef.current.files[0].name}</p>
                 : <>
-                  <p className="text-sm">クリックしてPDFを選択</p>
+                  <p className="text-sm">クリックまたはドラッグ＆ドロップ</p>
                   <p className="text-xs">ネットバンキングの明細PDFに対応</p>
                 </>
               }
@@ -242,15 +269,18 @@ export function ScanPage({ accounts, categories }: Props) {
           </div>
         ) : mode === "csv" ? (
             <div
-              className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragging ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-400"}`}
               onClick={() => fileRef.current?.click()}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
             >
               <div className="flex flex-col items-center gap-2 text-gray-400">
                 <FileSpreadsheet className="w-10 h-10" />
                 {fileRef.current?.files?.[0]
                   ? <p className="text-sm text-gray-700">{fileRef.current.files[0].name}</p>
                   : <>
-                    <p className="text-sm">クリックしてCSVを選択</p>
+                    <p className="text-sm">クリックまたはドラッグ＆ドロップ</p>
                     <p className="text-xs">銀行ネットバンキングからダウンロードしたCSV</p>
                   </>
                 }
@@ -266,16 +296,19 @@ export function ScanPage({ accounts, categories }: Props) {
             </div>
           ) : (
             <div
-              className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center cursor-pointer hover:border-blue-400 transition-colors"
+              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${isDragging ? "border-blue-400 bg-blue-50" : "border-gray-200 hover:border-blue-400"}`}
               onClick={() => fileRef.current?.click()}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
             >
               {previewUrl ? (
                 <img src={previewUrl} alt="通帳プレビュー" className="max-h-64 mx-auto rounded object-contain" />
               ) : (
                 <div className="flex flex-col items-center gap-2 text-gray-400">
                   <Upload className="w-10 h-10" />
-                  <p className="text-sm">クリックして画像を選択</p>
-                  <p className="text-xs">JPEG / PNG / WebP 対応（Gemini APIキー設定時のみ動作）</p>
+                  <p className="text-sm">クリックまたはドラッグ＆ドロップ</p>
+                  <p className="text-xs">JPEG / PNG / WebP 対応</p>
                 </div>
               )}
               <input
