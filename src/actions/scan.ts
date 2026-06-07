@@ -26,7 +26,8 @@ export async function scanImage(formData: FormData) {
     items = await scanBankStatement(base64, file.type as AllowedMimeType);
   } catch (e) {
     console.error("Gemini API error:", e);
-    return { error: "AI読み取りに失敗しました。画像を確認して再試行してください。" };
+    const msg = e instanceof Error ? e.message : String(e);
+    return { error: `AI読み取りエラー: ${msg}` };
   }
 
   if (items.length === 0) return { error: "取引データを読み取れませんでした" };
