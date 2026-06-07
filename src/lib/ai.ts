@@ -28,10 +28,10 @@ export async function scanBankStatement(
   imageBase64: string,
   mimeType: "image/jpeg" | "image/png" | "image/webp" | "image/gif"
 ): Promise<ScannedItem[]> {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY!, apiVersion: "v1" });
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
 
   const response = await ai.models.generateContent({
-    model: "gemini-1.5-flash",
+    model: "gemini-2.0-flash-lite",
     contents: [
       {
         parts: [
