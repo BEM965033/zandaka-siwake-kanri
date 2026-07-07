@@ -10,7 +10,9 @@ import {
   Building2,
   Tag,
   ScanLine,
+  LogOut,
 } from "lucide-react";
+import { logout } from "@/actions/auth";
 
 const navItems = [
   { href: "/", label: "ダッシュボード", icon: LayoutDashboard },
@@ -52,6 +54,17 @@ export function Sidebar() {
           );
         })}
       </nav>
+      <div className="border-t border-gray-200 p-3">
+        <form action={logout}>
+          <button
+            type="submit"
+            className="flex items-center gap-3 px-2 py-2 text-sm text-gray-400 hover:text-gray-600 w-full rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <LogOut className="w-4 h-4 shrink-0" />
+            ログアウト
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }
