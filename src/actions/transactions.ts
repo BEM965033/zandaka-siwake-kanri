@@ -323,6 +323,7 @@ export async function updateTransaction(
     categoryId: string | null;
     fromAccountId: string | null;
     toAccountId: string | null;
+    date?: string;
   }
 ) {
   const tx = await prisma.transaction.findUnique({
@@ -376,6 +377,7 @@ export async function updateTransaction(
     prisma.transaction.update({
       where: { id },
       data: {
+        ...(data.date ? { date: new Date(data.date) } : {}),
         type: data.type as "EXPENSE" | "INCOME" | "TRANSFER",
         categoryId: data.categoryId ?? null,
         isClassified: data.type === "TRANSFER" ? true : !!data.categoryId,

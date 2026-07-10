@@ -24,6 +24,7 @@ export function TransactionList({ transactions, accounts, categories, currentFil
   const router = useRouter();
   const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDate, setEditDate] = useState<string>("");
   const [editType, setEditType] = useState<string>("");
   const [editCategoryId, setEditCategoryId] = useState<string>("");
   const [editFromAccountId, setEditFromAccountId] = useState<string>("");
@@ -32,6 +33,7 @@ export function TransactionList({ transactions, accounts, categories, currentFil
 
   function startEdit(t: TransactionWithRelations) {
     setEditingId(t.id);
+    setEditDate(new Date(t.date).toISOString().slice(0, 10));
     setEditType(t.type);
     setEditCategoryId(t.category?.id ?? "");
     setEditFromAccountId(t.fromAccount?.id ?? "");
@@ -45,6 +47,7 @@ export function TransactionList({ transactions, accounts, categories, currentFil
   function saveEdit(id: string) {
     startSave(async () => {
       await updateTransaction(id, {
+        date: editDate || undefined,
         type: editType,
         categoryId: editCategoryId || null,
         fromAccountId: editFromAccountId || null,
@@ -191,7 +194,18 @@ export function TransactionList({ transactions, accounts, categories, currentFil
 
                 return (
                   <tr key={t.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{formatDate(t.date)}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {editingId === t.id ? (
+                        <input
+                          type="date"
+                          value={editDate}
+                          onChange={(e) => setEditDate(e.target.value)}
+                          className="h-7 rounded border border-input bg-white px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                        />
+                      ) : (
+                        formatDate(t.date)
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       {editingId === t.id ? (
                         <select
