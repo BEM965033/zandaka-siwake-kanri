@@ -22,6 +22,7 @@ const typeBadgeColors: Record<string, string> = {
 
 export function TransactionList({ transactions, accounts, categories, currentFilters }: Props) {
   const router = useRouter();
+  const [sortOrder, setSortOrder] = useState<"desc" | "asc">("desc");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editType, setEditType] = useState<string>("");
   const [editCategoryId, setEditCategoryId] = useState<string>("");
@@ -158,7 +159,12 @@ export function TransactionList({ transactions, accounts, categories, currentFil
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">日付</th>
+                <th
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-500 cursor-pointer select-none hover:text-gray-800"
+                  onClick={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
+                >
+                  日付 {sortOrder === "desc" ? "↓" : "↑"}
+                </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">種別</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">内容</th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">口座</th>
@@ -168,7 +174,12 @@ export function TransactionList({ transactions, accounts, categories, currentFil
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {transactions.map((t) => {
+              {[...transactions]
+                .sort((a, b) => {
+                  const diff = new Date(a.date).getTime() - new Date(b.date).getTime();
+                  return sortOrder === "desc" ? -diff : diff;
+                })
+                .map((t) => {
                 const amount = Number(t.amount);
                 const sign = t.type === "EXPENSE" ? "-" : t.type === "INCOME" ? "+" : "";
                 const accountLabel =
