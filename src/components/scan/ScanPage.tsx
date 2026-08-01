@@ -119,12 +119,28 @@ export function ScanPage({ accounts, categories }: Props) {
   async function applykategorySuggestions(parsed: ScannedItem[]) {
     const descriptions = [...new Set(parsed.map((i) => i.description))];
     const suggestions = await suggestCategories(descriptions);
-    return parsed.map((item, i) => ({
-      ...item,
-      id: String(i),
-      selected: true,
-      categoryId: suggestions[item.description] ?? item.categoryId ?? "",
-    }));
+    return parsed.map((item, i) => {
+      const detected = detectShinoToSbiTransfer(item, accountId, accounts);
+      return {
+        ...detected,
+        id: String(i),
+        selected: true,
+        categoryId: detected.type === "TRANSFER" ? "" : suggestions[item.description] ?? item.categoryId ?? "",
+      };
+    });
+  }
+
+  // しの銀からSBIへの毎月の自動振替（ATM振込 か）ミロクデンタルラボ）を振替取引として自動検出
+  function detectShinoToSbiTransfer(
+    item: ScannedItem,
+    sourceAccountId: string,
+    accountList: AccountWithBalance[]
+  ): ScannedItem {
+    if (item.type !== "EXPENSE") return item;
+    if (!item.description.includes("ミロクデンタルラボ")) return item;
+    const sbiAccount = accountList.find((a) => a.name.includes("SBI") && a.id !== sourceAccountId);
+    if (!sbiAccount) return item;
+    return { ...item, type: "TRANSFER", toAccountId: sbiAccount.id };
   }
 
   function toggleSelect(id: string) {
@@ -143,6 +159,10 @@ export function ScanPage({ accounts, categories }: Props) {
   function handleRegister() {
     const selected = items.filter((it) => it.selected);
     if (!accountId) { setError("口座を選択してください"); return; }
+    if (selected.some((it) => it.type === "TRANSFER" && !it.toAccountId)) {
+      setError("振替先口座が未選択の取引があります");
+      return;
+    }
     setError(null);
     startRegister(async () => {
       const result = await bulkCreateTransactions(selected, accountId);
@@ -395,26 +415,47 @@ export function ScanPage({ accounts, categories }: Props) {
                   />
                   <div className="flex items-center gap-2">
                     <Badge
-                      variant={item.type === "EXPENSE" ? "destructive" : "default"}
-                      className="cursor-pointer select-none text-xs"
-                      onClick={() => updateItem(item.id, "type", item.type === "EXPENSE" ? "INCOME" : "EXPENSE")}
+                      variant={item.type === "EXPENSE" ? "destructive" : item.type === "INCOME" ? "default" : "secondary"}
+                      className={`cursor-pointer select-none text-xs ${item.type === "TRANSFER" ? "bg-blue-100 text-blue-700 hover:bg-blue-200 border-transparent" : ""}`}
+                      onClick={() => updateItem(
+                        item.id,
+                        "type",
+                        item.type === "EXPENSE" ? "INCOME" : item.type === "INCOME" ? "TRANSFER" : "EXPENSE"
+                      )}
                     >
-                      {item.type === "EXPENSE" ? "支出" : "収入"}
+                      {item.type === "EXPENSE" ? "支出" : item.type === "INCOME" ? "収入" : "振替"}
                     </Badge>
-                    <Select
-                      value={item.categoryId ?? "none"}
-                      onValueChange={(v) => updateItem(item.id, "categoryId", v === "none" ? "" : v)}
-                    >
-                      <SelectTrigger className="h-8 text-xs flex-1">
-                        <SelectValue placeholder="カテゴリ" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">未分類</SelectItem>
-                        {(item.type === "EXPENSE" ? expenseCategories : incomeCategories).map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {item.type === "TRANSFER" ? (
+                      <Select
+                        value={item.toAccountId ?? "none"}
+                        onValueChange={(v) => updateItem(item.id, "toAccountId", v === "none" ? "" : v)}
+                      >
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="振替先口座" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">振替先を選択</SelectItem>
+                          {accounts.filter((a) => a.id !== accountId).map((a) => (
+                            <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Select
+                        value={item.categoryId ?? "none"}
+                        onValueChange={(v) => updateItem(item.id, "categoryId", v === "none" ? "" : v)}
+                      >
+                        <SelectTrigger className="h-8 text-xs flex-1">
+                          <SelectValue placeholder="カテゴリ" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">未分類</SelectItem>
+                          {(item.type === "EXPENSE" ? expenseCategories : incomeCategories).map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
                   </div>
                 </div>
               </div>

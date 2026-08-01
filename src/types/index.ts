@@ -36,8 +36,9 @@ export interface ScannedItem {
   date: string;
   description: string;
   amount: number;
-  type: "EXPENSE" | "INCOME";
+  type: "EXPENSE" | "INCOME" | "TRANSFER";
   categoryId?: string;
+  toAccountId?: string;
 }
 
 export interface DashboardData {

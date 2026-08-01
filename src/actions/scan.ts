@@ -96,19 +96,39 @@ export async function bulkCreateTransactions(
 
   try {
   for (const item of items) {
+    if (item.type === "TRANSFER" && !item.toAccountId) {
+      return { error: `振替先口座が未選択の取引があります: ${item.description}` };
+    }
+
     const category = item.categoryId
       ? await prisma.category.findUnique({ where: { id: item.categoryId } })
       : null;
+    const toAccount = item.type === "TRANSFER"
+      ? await prisma.account.findUnique({ where: { id: item.toAccountId! } })
+      : null;
+    if (item.type === "TRANSFER" && !toAccount) {
+      return { error: `振替先口座が見つかりません: ${item.description}` };
+    }
 
     const journalLines = buildJournalEntries({
       type: item.type,
       amount: item.amount,
       description: item.description,
-      fromAccountType: item.type === "EXPENSE" ? account.type : undefined,
-      toAccountType: item.type === "INCOME" ? account.type : undefined,
+      fromAccountType: item.type === "EXPENSE" || item.type === "TRANSFER" ? account.type : undefined,
+      toAccountType: item.type === "INCOME" ? account.type : item.type === "TRANSFER" ? toAccount!.type : undefined,
       categoryDebitAccount: category?.debitAccount ?? undefined,
       categoryCreditAccount: category?.creditAccount ?? undefined,
     });
+
+    const balanceOps =
+      item.type === "EXPENSE"
+        ? [prisma.account.update({ where: { id: accountId }, data: { balance: { decrement: item.amount } } })]
+        : item.type === "INCOME"
+        ? [prisma.account.update({ where: { id: accountId }, data: { balance: { increment: item.amount } } })]
+        : [
+            prisma.account.update({ where: { id: accountId }, data: { balance: { decrement: item.amount } } }),
+            prisma.account.update({ where: { id: item.toAccountId! }, data: { balance: { increment: item.amount } } }),
+          ];
 
     await prisma.$transaction([
       prisma.transaction.create({
@@ -117,16 +137,14 @@ export async function bulkCreateTransactions(
           type: item.type,
           amount: item.amount,
           description: item.description,
-          isClassified: !!item.categoryId,
-          fromAccountId: item.type === "EXPENSE" ? accountId : null,
-          toAccountId: item.type === "INCOME" ? accountId : null,
-          categoryId: item.categoryId || null,
+          isClassified: item.type === "TRANSFER" ? true : !!item.categoryId,
+          fromAccountId: item.type === "EXPENSE" || item.type === "TRANSFER" ? accountId : null,
+          toAccountId: item.type === "INCOME" ? accountId : item.type === "TRANSFER" ? item.toAccountId : null,
+          categoryId: item.type === "TRANSFER" ? null : item.categoryId || null,
           journalEntries: { create: journalLines },
         },
       }),
-      item.type === "EXPENSE"
-        ? prisma.account.update({ where: { id: accountId }, data: { balance: { decrement: item.amount } } })
-        : prisma.account.update({ where: { id: accountId }, data: { balance: { increment: item.amount } } }),
+      ...balanceOps,
     ]);
   }
 
