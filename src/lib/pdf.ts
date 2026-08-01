@@ -28,13 +28,13 @@ export function parsePdfText(text: string): ScannedItem[] {
     allMatches.push({ index: m.index, description: desc, amount: credit, type: "INCOME" });
   }
 
-  // 位置順ソート・重複除去（同じdesc+amountが複数マッチした場合）
+  // 位置順ソート・重複除去（同じ位置に複数マッチした場合のみ）
+  // ※ desc+amountキーだと「振込手数料 145円」のような同一内容の別取引が誤って消えるため位置で判定する
   allMatches.sort((a, b) => a.index - b.index);
-  const seenMatch = new Set<string>();
-  const uniqueMatches = allMatches.filter(({ description, amount }) => {
-    const key = `${description}|${amount}`;
-    if (seenMatch.has(key)) return false;
-    seenMatch.add(key);
+  const seenIndex = new Set<number>();
+  const uniqueMatches = allMatches.filter(({ index }) => {
+    if (seenIndex.has(index)) return false;
+    seenIndex.add(index);
     return true;
   });
 
