@@ -35,6 +35,7 @@ export default async function TransactionsPage({
           description: t.description,
           memo: t.memo,
           isClassified: t.isClassified,
+          hasPhoto: t.photoMimeType !== null,
           fromAccount: t.fromAccount
             ? { id: t.fromAccount.id, name: t.fromAccount.name, type: t.fromAccount.type }
             : null,

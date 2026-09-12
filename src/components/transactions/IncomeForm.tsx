@@ -5,6 +5,7 @@ import { createIncome } from "@/actions/transactions";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { PhotoInput } from "./PhotoInput";
 import type { AccountWithBalance, CategoryOption } from "@/types";
 
 interface Props {
@@ -15,9 +16,12 @@ interface Props {
 export function IncomeForm({ accounts, categories }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [accountId, setAccountId] = useState("");
+  const [photo, setPhoto] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
   const today = new Date().toISOString().split("T")[0];
+  const isCashAccount = accounts.find((a) => a.id === accountId)?.type === "CASH";
 
   async function handleSubmit(formData: FormData) {
     setError(null);
@@ -28,6 +32,8 @@ export function IncomeForm({ accounts, categories }: Props) {
     } else {
       setSuccess(true);
       formRef.current?.reset();
+      setAccountId("");
+      setPhoto(null);
     }
   }
 
@@ -61,6 +67,8 @@ export function IncomeForm({ accounts, categories }: Props) {
           id="income-account"
           name="toAccountId"
           required
+          value={accountId}
+          onChange={(e) => setAccountId(e.target.value)}
           className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
         >
           <option value="">口座を選択</option>
@@ -97,6 +105,14 @@ export function IncomeForm({ accounts, categories }: Props) {
         <Label htmlFor="income-memo">メモ（任意）</Label>
         <Textarea id="income-memo" name="memo" placeholder="メモを入力" rows={2} />
       </div>
+
+      {isCashAccount && (
+        <div className="space-y-1.5">
+          <Label>写真（任意）</Label>
+          <p className="text-xs text-gray-500">いつ財布に入れたかの記録を残しておける</p>
+          <PhotoInput name="photoData" value={photo} onChange={setPhoto} />
+        </div>
+      )}
 
       <button
         type="submit"

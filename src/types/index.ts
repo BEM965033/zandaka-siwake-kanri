@@ -27,6 +27,7 @@ export interface TransactionWithRelations {
   description: string;
   memo: string | null;
   isClassified: boolean;
+  hasPhoto: boolean;
   fromAccount: { id: string; name: string; type: AccountType } | null;
   toAccount: { id: string; name: string; type: AccountType } | null;
   category: { id: string; name: string } | null;

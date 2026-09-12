@@ -34,7 +34,16 @@ export async function getDashboardData(): Promise<DashboardData> {
       prisma.transaction.findMany({
         take: 10,
         orderBy: [{ date: "desc" }, { createdAt: "desc" }],
-        include: {
+        // photoDataは重いので取得しない
+        select: {
+          id: true,
+          date: true,
+          type: true,
+          amount: true,
+          description: true,
+          memo: true,
+          isClassified: true,
+          photoMimeType: true,
           fromAccount: { select: { id: true, name: true, type: true } },
           toAccount: { select: { id: true, name: true, type: true } },
           category: { select: { id: true, name: true } },
@@ -67,6 +76,7 @@ export async function getDashboardData(): Promise<DashboardData> {
       description: t.description,
       memo: t.memo,
       isClassified: t.isClassified,
+      hasPhoto: t.photoMimeType !== null,
       fromAccount: t.fromAccount
         ? { id: t.fromAccount.id, name: t.fromAccount.name, type: t.fromAccount.type }
         : null,

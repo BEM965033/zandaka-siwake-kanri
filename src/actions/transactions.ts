@@ -5,6 +5,20 @@ import { buildJournalEntries } from "@/lib/journal";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+// 添付写真のdata URL上限。クライアント側で圧縮済みだが念のためサーバーでも検証する
+const MAX_PHOTO_LENGTH = 2_000_000;
+
+type PhotoInput = { photoData: string; photoMimeType: string } | { photoData: null; photoMimeType: null };
+
+function readPhoto(formData: FormData): PhotoInput | { error: string } {
+  const raw = formData.get("photoData");
+  if (typeof raw !== "string" || raw === "") return { photoData: null, photoMimeType: null };
+  const match = raw.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+  if (!match) return { error: "写真の形式が不正です" };
+  if (raw.length > MAX_PHOTO_LENGTH) return { error: "写真のサイズが大きすぎます" };
+  return { photoData: raw, photoMimeType: match[1] };
+}
+
 const expenseSchema = z.object({
   date: z.string().min(1, "日付を入力してください"),
   fromAccountId: z.string().min(1, "支払口座を選択してください"),
@@ -56,6 +70,11 @@ export async function createExpense(formData: FormData) {
 
   if (!fromAccount) return { error: "口座が見つかりません" };
 
+  const photo = readPhoto(formData);
+  if ("error" in photo) return { error: photo.error };
+  // 写真は現金口座の取引のみ保存する
+  const savePhoto = fromAccount.type === "CASH" ? photo : { photoData: null, photoMimeType: null };
+
   const journalLines = buildJournalEntries({
     type: "EXPENSE",
     amount,
@@ -76,6 +95,8 @@ export async function createExpense(formData: FormData) {
         isClassified: !!categoryId,
         fromAccountId,
         categoryId: categoryId || null,
+        photoData: savePhoto.photoData,
+        photoMimeType: savePhoto.photoMimeType,
         journalEntries: { create: journalLines },
       },
     }),
@@ -112,6 +133,11 @@ export async function createIncome(formData: FormData) {
 
   if (!toAccount) return { error: "口座が見つかりません" };
 
+  const photo = readPhoto(formData);
+  if ("error" in photo) return { error: photo.error };
+  // 写真は現金口座の取引のみ保存する
+  const savePhoto = toAccount.type === "CASH" ? photo : { photoData: null, photoMimeType: null };
+
   const journalLines = buildJournalEntries({
     type: "INCOME",
     amount,
@@ -132,6 +158,8 @@ export async function createIncome(formData: FormData) {
         isClassified: !!categoryId,
         toAccountId,
         categoryId: categoryId || null,
+        photoData: savePhoto.photoData,
+        photoMimeType: savePhoto.photoMimeType,
         journalEntries: { create: journalLines },
       },
     }),
@@ -233,13 +261,22 @@ export async function getTransactions(filters?: {
     };
   }
 
+  // photoDataは重いのでselectから除外する。写真の有無はphotoMimeTypeで判定し、
+  // 実データが必要になったタイミングでgetTransactionPhoto()を使って個別に取得する
   return prisma.transaction.findMany({
     where,
-    include: {
+    select: {
+      id: true,
+      date: true,
+      type: true,
+      amount: true,
+      description: true,
+      memo: true,
+      isClassified: true,
+      photoMimeType: true,
       fromAccount: { select: { id: true, name: true, type: true } },
       toAccount: { select: { id: true, name: true, type: true } },
       category: { select: { id: true, name: true } },
-      journalEntries: true,
     },
     orderBy: [{ date: "desc" }, { createdAt: "desc" }],
     take: 200,
@@ -387,6 +424,52 @@ export async function updateTransaction(
       },
     }),
   ]);
+
+  revalidatePath("/");
+  revalidatePath("/transactions");
+  return { success: true };
+}
+
+// 写真の実データは一覧取得に含めていないため、表示が必要になったときだけ個別に取得する
+export async function getTransactionPhoto(id: string) {
+  const tx = await prisma.transaction.findUnique({
+    where: { id },
+    select: { photoData: true },
+  });
+  if (!tx?.photoData) return { error: "写真が見つかりません" };
+  return { photoData: tx.photoData };
+}
+
+// 既存取引の写真を差し替える（photoDataがnullなら削除）
+export async function updateTransactionPhoto(id: string, photoData: string | null) {
+  const tx = await prisma.transaction.findUnique({
+    where: { id },
+    include: { fromAccount: true, toAccount: true },
+  });
+  if (!tx) return { error: "取引が見つかりません" };
+
+  if (photoData === null) {
+    await prisma.transaction.update({
+      where: { id },
+      data: { photoData: null, photoMimeType: null },
+    });
+    revalidatePath("/");
+    revalidatePath("/transactions");
+    return { success: true };
+  }
+
+  // 写真は現金口座がからむ取引のみ
+  const touchesCash = tx.fromAccount?.type === "CASH" || tx.toAccount?.type === "CASH";
+  if (!touchesCash) return { error: "写真を添付できるのは現金口座の取引だけです" };
+
+  const match = photoData.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,/);
+  if (!match) return { error: "写真の形式が不正です" };
+  if (photoData.length > MAX_PHOTO_LENGTH) return { error: "写真のサイズが大きすぎます" };
+
+  await prisma.transaction.update({
+    where: { id },
+    data: { photoData, photoMimeType: match[1] },
+  });
 
   revalidatePath("/");
   revalidatePath("/transactions");

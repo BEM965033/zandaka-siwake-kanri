@@ -2,9 +2,16 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteTransaction, updateTransaction } from "@/actions/transactions";
+import {
+  deleteTransaction,
+  getTransactionPhoto,
+  updateTransaction,
+  updateTransactionPhoto,
+} from "@/actions/transactions";
 import { formatCurrency, formatDate, getTransactionTypeLabel } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { PhotoInput } from "./PhotoInput";
+import { Image as ImageIcon, Loader2, X } from "lucide-react";
 import type { TransactionWithRelations, AccountType, CategoryType } from "@/types";
 
 interface Props {
@@ -29,19 +36,40 @@ export function TransactionList({ transactions, accounts, categories, currentFil
   const [editCategoryId, setEditCategoryId] = useState<string>("");
   const [editFromAccountId, setEditFromAccountId] = useState<string>("");
   const [editToAccountId, setEditToAccountId] = useState<string>("");
+  const [editPhoto, setEditPhoto] = useState<string | null>(null);
+  const [isPhotoDirty, setIsPhotoDirty] = useState(false);
+  const [isLoadingEditPhoto, setIsLoadingEditPhoto] = useState(false);
+  const [viewingPhoto, setViewingPhoto] = useState<string | null>(null);
+  const [isLoadingView, setIsLoadingView] = useState(false);
   const [isSaving, startSave] = useTransition();
 
-  function startEdit(t: TransactionWithRelations) {
+  const editTouchesCash =
+    accounts.find((a) => a.id === editFromAccountId)?.type === "CASH" ||
+    accounts.find((a) => a.id === editToAccountId)?.type === "CASH";
+
+  async function startEdit(t: TransactionWithRelations) {
     setEditingId(t.id);
     setEditDate(new Date(t.date).toISOString().slice(0, 10));
     setEditType(t.type);
     setEditCategoryId(t.category?.id ?? "");
     setEditFromAccountId(t.fromAccount?.id ?? "");
     setEditToAccountId(t.toAccount?.id ?? "");
+    setEditPhoto(null);
+    setIsPhotoDirty(false);
+
+    // 写真の実データは一覧に含まれていないため編集開始時に取得する
+    if (t.hasPhoto) {
+      setIsLoadingEditPhoto(true);
+      const result = await getTransactionPhoto(t.id);
+      if (result.photoData) setEditPhoto(result.photoData);
+      setIsLoadingEditPhoto(false);
+    }
   }
 
   function cancelEdit() {
     setEditingId(null);
+    setEditPhoto(null);
+    setIsPhotoDirty(false);
   }
 
   function saveEdit(id: string) {
@@ -53,9 +81,23 @@ export function TransactionList({ transactions, accounts, categories, currentFil
         fromAccountId: editFromAccountId || null,
         toAccountId: editToAccountId || null,
       });
+      // 写真は変更されたときだけ書き込む
+      if (isPhotoDirty) {
+        await updateTransactionPhoto(id, editPhoto);
+      }
       setEditingId(null);
+      setEditPhoto(null);
+      setIsPhotoDirty(false);
       router.refresh();
     });
+  }
+
+  async function openPhoto(id: string) {
+    setIsLoadingView(true);
+    setViewingPhoto(null);
+    const result = await getTransactionPhoto(id);
+    if (result.photoData) setViewingPhoto(result.photoData);
+    setIsLoadingView(false);
   }
 
   const [filters, setFilters] = useState({
@@ -223,7 +265,36 @@ export function TransactionList({ transactions, accounts, categories, currentFil
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-gray-800 max-w-[200px] truncate">{t.description}</td>
+                    <td className="px-4 py-3 text-gray-800 max-w-[200px]">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate">{t.description}</span>
+                        {t.hasPhoto && editingId !== t.id && (
+                          <button
+                            onClick={() => openPhoto(t.id)}
+                            title="写真を見る"
+                            className="shrink-0 text-gray-400 hover:text-blue-600 transition-colors"
+                          >
+                            <ImageIcon className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                      {editingId === t.id && editTouchesCash && (
+                        <div className="mt-2">
+                          {isLoadingEditPhoto ? (
+                            <span className="flex items-center gap-1.5 text-xs text-gray-400">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              写真を読み込み中…
+                            </span>
+                          ) : (
+                            <PhotoInput
+                              compact
+                              value={editPhoto}
+                              onChange={(dataUrl) => { setEditPhoto(dataUrl); setIsPhotoDirty(true); }}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                       {editingId === t.id ? (
                         <span className="flex flex-col gap-1">
@@ -319,6 +390,34 @@ export function TransactionList({ transactions, accounts, categories, currentFil
           </table>
         )}
       </div>
+
+      {/* 写真の拡大表示 */}
+      {(viewingPhoto || isLoadingView) && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => { setViewingPhoto(null); setIsLoadingView(false); }}
+        >
+          {isLoadingView ? (
+            <Loader2 className="h-8 w-8 animate-spin text-white" />
+          ) : (
+            <div className="relative max-h-full" onClick={(e) => e.stopPropagation()}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={viewingPhoto!}
+                alt="添付写真"
+                className="max-h-[85vh] max-w-full rounded-lg object-contain"
+              />
+              <button
+                onClick={() => setViewingPhoto(null)}
+                className="absolute -right-3 -top-3 rounded-full bg-white p-1.5 text-gray-700 shadow hover:bg-gray-100 transition-colors"
+                aria-label="閉じる"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
