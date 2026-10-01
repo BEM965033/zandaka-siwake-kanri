@@ -25,7 +25,7 @@ model: sonnet
 5. **Server Actions / 認証**
    - `"use server"` ファイルの関数は外部から呼べる。入力を zod で検証しているか。
    - 変更後に `revalidatePath` で関連ページを更新しているか。
-   - `proxy.ts` の認証除外パスを不用意に広げていないか。
+   - `src/proxy.ts` の認証除外パスを不用意に広げていないか。
 6. **Next.js 16 の API**
    - 学習データと API が異なる。怪しい使い方は `node_modules/next/dist/docs/` で確認してから指摘する。
 7. **秘密情報**

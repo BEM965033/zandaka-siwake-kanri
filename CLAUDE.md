@@ -42,7 +42,7 @@ When asking for a decision, use "AskUserQuestion".
 - `src/components/<機能>/` — 画面ごとのコンポーネント
 - `src/lib/journal.ts` — 取引 → 仕訳の生成ロジック
 - `src/lib/prisma.ts` — Prisma クライアント（シングルトン）
-- `middleware.ts` — Cookie (`auth_token` = `AUTH_SECRET`) による簡易パスワード認証
+- `src/proxy.ts` — Cookie (`auth_token` = `AUTH_SECRET`) による簡易パスワード認証（Next.js 16 で middleware から改名。`src/app` 構成なので `src/` 直下に置く必要がある。ランタイムは Node.js 固定）
 - `plans/` — 計画メモ（`plansDirectory`）
 
 ## 重要な注意点
