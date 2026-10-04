@@ -7,6 +7,22 @@ for await (const c of process.stdin) chunks.push(c);
 const input = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 const cmd = String(input?.tool_input?.command ?? "");
 
+// .env 判定用: ヒアドキュメント本文と git commit -m のメッセージ（文章）は除外して誤検知を防ぐ
+const cmdNoProse = cmd
+  .replace(/<<-?\s*(['"]?)(\w+)\1[^\n]*\n[\s\S]*?\n\s*\2\s*(\n|$)/g, "\n")
+  .replace(/(-m|--message)\s+("[^"]*"|'[^']*')/g, "");
+
+const proseRules = [
+  [/(^|[\s"'\/\\=<])\.env(\.[\w.-]+)?(?![\w-])/i, ".env 系は本番の秘密情報を含む。シェルからも読まない・書かない。必要ならユーザーに確認して。"],
+  [/\b(printenv|Get-ChildItem\s+env:|gci\s+env:)/i, "環境変数の一覧出力は秘密情報を含む。"],
+];
+for (const [re, reason] of proseRules) {
+  if (re.test(cmdNoProse)) {
+    process.stderr.write(`[guard-shell] ブロック: ${reason}\nコマンド: ${cmd}\n`);
+    process.exit(2);
+  }
+}
+
 const rules = [
   [/prisma\s+migrate\s+reset/i, "prisma migrate reset は本番DBを全消去する。ユーザーに手動実行を依頼して。"],
   [/prisma\s+db\s+push[^\n]*(--force-reset|--accept-data-loss)/i, "データ消失を伴う prisma db push は禁止。"],
