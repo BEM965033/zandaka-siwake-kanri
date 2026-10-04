@@ -11,6 +11,7 @@ import {
   Tag,
   ScanLine,
   LogOut,
+  BookOpen,
 } from "lucide-react";
 import { logout } from "@/actions/auth";
 
@@ -19,6 +20,7 @@ const navItems = [
   { href: "/transactions/new", label: "取引入力", icon: PlusCircle },
   { href: "/scan", label: "通帳スキャン", icon: ScanLine },
   { href: "/transactions", label: "履歴一覧", icon: List },
+  { href: "/cash-book", label: "現金出納帳", icon: BookOpen },
   { href: "/accounts", label: "口座設定", icon: Building2 },
   { href: "/categories", label: "カテゴリ設定", icon: Tag },
 ];
@@ -27,7 +29,7 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-56 shrink-0 border-r border-gray-200 bg-white flex flex-col h-full">
+    <aside className="w-56 shrink-0 border-r border-gray-200 bg-white flex flex-col h-full print:hidden">
       <div className="px-5 py-5 border-b border-gray-200">
         <h1 className="text-base font-bold text-gray-900 leading-tight">
           残高仕分け管理
