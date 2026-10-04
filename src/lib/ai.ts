@@ -23,6 +23,7 @@ function buildPrompt(): string {
 - 「返済回数」「6/120回目」「証書貸付」の補足行は独立した取引ではなく、直前の取引の摘要の一部。
 - 印字は半角カナ（ATM・機械印字）が多い。1取引が2行にわたることがあり、金額のない次行のカナ文字（振込人名・送金先名）は、その直前の金額のある行の摘要の続き。次の取引に混ぜないこと。
 - 行の右余白などに手書きメモ（「水道光熱費」「小遣」など）があれば、読み取って memo に入れる。手書きは摘要（description）には入れず、description は印字から読む。手書きがない行の memo は空文字。
+- 「繰越」「繰越 会員」などの繰越行は前ページからの残高の引継ぎで、取引ではない（金額は印字されていない）。出力しないこと。その次の行の金額を繰越行に付けてはいけない。
 - 取引の件数は「金額が印字されている行」の数と一致させる。金額のない行（振込人名だけの行、返済回数だけの行）を独立した取引にしない。
 - 各取引は、まず rawLine にその1行を左から右へ印字どおりに書き写し（日付・摘要・金額・記号＊も含める）、その rawLine の内容だけから他の項目を決めること。上下の行の摘要や金額を持ってこない。
 - 行をまたいで摘要・金額・残高を混ぜないこと。必ず同じ横一行の内容を1件にまとめる。
@@ -131,5 +132,7 @@ export async function scanBankStatement(
   const text = response.text ?? "";
   const jsonMatch = text.match(/\[[\s\S]*\]/);
   if (!jsonMatch) return [];
-  return reconcile(JSON.parse(jsonMatch[0]) as RawItem[]);
+  // 繰越行は取引ではない。プロンプトで除外させているが、混入した場合の保険
+  const raw = (JSON.parse(jsonMatch[0]) as RawItem[]).filter((i) => !/^繰越/.test(i.description.normalize("NFKC").trim()));
+  return reconcile(raw);
 }
