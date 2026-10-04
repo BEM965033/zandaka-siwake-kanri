@@ -137,6 +137,7 @@ export async function bulkCreateTransactions(
           type: item.type,
           amount: item.amount,
           description: item.description,
+          memo: item.memo || null,
           isClassified: item.type === "TRANSFER" ? true : !!item.categoryId,
           fromAccountId: item.type === "EXPENSE" || item.type === "TRANSFER" ? accountId : null,
           toAccountId: item.type === "INCOME" ? accountId : item.type === "TRANSFER" ? item.toAccountId : null,

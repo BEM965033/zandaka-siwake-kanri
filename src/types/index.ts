@@ -40,6 +40,7 @@ export interface ScannedItem {
   type: "EXPENSE" | "INCOME" | "TRANSFER";
   categoryId?: string;
   toAccountId?: string;
+  memo?: string;
 }
 
 export interface DashboardData {

@@ -117,7 +117,9 @@ export function ScanPage({ accounts, categories }: Props) {
   }
 
   async function applykategorySuggestions(parsed: ScannedItem[]) {
-    const descriptions = [...new Set(parsed.map((i) => i.description))];
+    // 手書きメモがあれば、メモを分類のキーにする（印字摘要より人の意図が出ている）
+    const keyOf = (i: ScannedItem) => i.memo || i.description;
+    const descriptions = [...new Set(parsed.map(keyOf))];
     const suggestions = await suggestCategories(descriptions);
     return parsed.map((item, i) => {
       const detected = detectShinoToSbiTransfer(item, accountId, accounts);
@@ -125,7 +127,7 @@ export function ScanPage({ accounts, categories }: Props) {
         ...detected,
         id: String(i),
         selected: true,
-        categoryId: detected.type === "TRANSFER" ? "" : suggestions[item.description] ?? item.categoryId ?? "",
+        categoryId: detected.type === "TRANSFER" ? "" : suggestions[keyOf(item)] ?? item.categoryId ?? "",
       };
     });
   }
@@ -457,6 +459,12 @@ export function ScanPage({ accounts, categories }: Props) {
                       </Select>
                     )}
                   </div>
+                  <Input
+                    value={item.memo ?? ""}
+                    onChange={(e) => updateItem(item.id, "memo", e.target.value)}
+                    className="text-xs h-7 sm:col-span-5"
+                    placeholder="メモ（手書き）"
+                  />
                 </div>
               </div>
             ))}
