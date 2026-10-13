@@ -73,6 +73,39 @@ export async function updateAccount(id: string, formData: FormData) {
   return { success: true };
 }
 
+// 初期残高を変更する。現在残高も差額分だけ増減させ、取引による増減はそのまま保つ
+export async function updateInitialBalance(id: string, value: unknown) {
+  const parsed = z.coerce.number().int().min(0, "0以上の金額を入力してください").safeParse(value);
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+  const newInitial = parsed.data;
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      const account = await tx.account.findUnique({
+        where: { id },
+        select: { initialBalance: true },
+      });
+      if (!account) throw new Error("NOT_FOUND");
+      const diff = newInitial - Number(account.initialBalance);
+      await tx.account.update({
+        where: { id },
+        data: { initialBalance: newInitial, balance: { increment: diff } },
+      });
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "NOT_FOUND") return { error: "口座が見つかりません" };
+    console.error("update initial balance error:", e);
+    return { error: "初期残高の更新に失敗しました" };
+  }
+
+  revalidatePath("/");
+  revalidatePath("/accounts");
+  revalidatePath("/cash-book");
+  return { success: true };
+}
+
 export async function deleteAccount(id: string) {
   await prisma.account.update({
     where: { id },

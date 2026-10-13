@@ -7,6 +7,7 @@ export interface AccountWithBalance {
   name: string;
   type: AccountType;
   balance: string;
+  initialBalance?: string;
   isActive: boolean;
   sortOrder: number;
 }

@@ -13,6 +13,7 @@ export default async function AccountsPage() {
     name: a.name,
     type: a.type,
     balance: a.balance.toString(),
+    initialBalance: a.initialBalance.toString(),
     isActive: a.isActive,
     sortOrder: a.sortOrder,
   }));
