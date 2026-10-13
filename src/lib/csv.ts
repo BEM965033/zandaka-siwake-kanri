@@ -102,16 +102,11 @@ export function parseBankCSV(text: string): ScannedItem[] {
 }
 
 export function decodeCsv(buffer: ArrayBuffer): string {
-  // Shift-JIS判定：0x80〜0x9F or 0xE0〜0xFCのバイトがあればSJIS
-  const bytes = new Uint8Array(buffer);
-  let likelySjis = false;
-  for (let i = 0; i < bytes.length - 1; i++) {
-    const b = bytes[i];
-    if ((b >= 0x81 && b <= 0x9f) || (b >= 0xe0 && b <= 0xfc)) {
-      likelySjis = true;
-      break;
-    }
+  // UTF-8として厳密にデコードできればUTF-8（BOMは自動で除去される）、できなければShift-JIS
+  // ※UTF-8の日本語は先頭バイトが0xE3等になるため、バイト範囲での判定はSJISと誤認する
+  try {
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    return new TextDecoder("shift-jis").decode(buffer);
   }
-  const encoding = likelySjis ? "shift-jis" : "utf-8";
-  return new TextDecoder(encoding).decode(buffer);
 }
